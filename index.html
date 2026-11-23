@@ -148,14 +148,14 @@ tr.open .caret{transform:rotate(90deg)}
 <body>
 <div class="app" style="display:flex">
   <aside class="side">
-    <div class="logo">越南協發有限公司财务管理<small>客户应收 · 数据本地存储</small></div>
+    <div class="logo">越南協發有限公司财务管理<small>客户应收 · 三端实时同步</small></div>
     <nav class="nav">
       <button data-view="dashboard" class="active">📊 总览</button>
       <button data-view="customers">🏢 客户</button>
       <button data-view="import">📥 导入</button>
       <button data-view="data">⚙️ 管理</button>
     </nav>
-    <div class="foot">v3.0 · 双击即用 · 数据存本机</div>
+    <div class="foot">v4.0 · 云端实时同步 · 离线可用</div>
   </aside>
   <div class="main">
     <div class="topbar">
@@ -173,6 +173,19 @@ tr.open .caret{transform:rotate(90deg)}
   </div>
 </div>
 <div class="modal-mask" id="modalMask"><div class="modal" id="modalBox"></div></div>
+<div class="modal-mask" id="loginMask" style="display:none">
+  <div class="modal" style="max-width:380px">
+    <h3 style="margin:0 0 4px">越南協發有限公司财务管理</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:14px">登录后数据实时同步，登录状态自动保留</div>
+    <label style="font-size:12.5px">账号</label>
+    <input id="loginEmail" type="email" value="admin@hiepphat.local" style="width:100%;margin:4px 0 10px;padding:9px">
+    <label style="font-size:12.5px">密码</label>
+    <input id="loginPassword" type="password" placeholder="请输入密码" style="width:100%;margin:4px 0 8px;padding:9px">
+    <div id="loginErr" style="color:#dc2626;font-size:12.5px;min-height:16px"></div>
+    <button class="btn primary" style="width:100%;justify-content:center" onclick="doLogin()">登录</button>
+  </div>
+</div>
+<script type="module" src="cloud.js"></script>
 <script src="app.js"></script>
 <script>
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {

@@ -24,7 +24,7 @@ function copyDir(src, dest) {
 
 rmrf(www);
 fs.mkdirSync(www, { recursive: true });
-for (const f of ["index.html", "app.js", "sw.js", "manifest.webmanifest"]) {
+for (const f of ["index.html", "app.js", "cloud.js", "sw.js", "manifest.webmanifest"]) {
   copy(path.join(root, f), path.join(www, f));
 }
 copyDir(path.join(root, "lib"), path.join(www, "lib"));

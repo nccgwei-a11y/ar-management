@@ -20,41 +20,24 @@ function invOrder(a,b){
 }
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now()+"-"+Math.random().toString(16).slice(2));
 
-/* ============ IndexedDB 本地存储 ============ */
-let db;
-function openDB(){
-  return new Promise((resolve,reject)=>{
-    const r=indexedDB.open("ar-web-db",2);
-    r.onupgradeneeded=e=>{
-      const d=e.target.result;
-      if(!d.objectStoreNames.contains("batches")) d.createObjectStore("batches",{keyPath:"id"});
-      if(!d.objectStoreNames.contains("invoices")){
-        const s=d.createObjectStore("invoices",{keyPath:"id"});
-        s.createIndex("batchId","batchId",{unique:false});
-        s.createIndex("month","month",{unique:false});
-      }
-      if(!d.objectStoreNames.contains("kv")) d.createObjectStore("kv",{keyPath:"key"});
-      if(!d.objectStoreNames.contains("payments")) d.createObjectStore("payments",{keyPath:"id"});
-    };
-    r.onsuccess=e=>{db=e.target.result;resolve(db);};
-    r.onerror=e=>reject(e);
-  });
+/* ============ Firebase 云端存储（离线缓存由 SDK 负责） ============ */
+function openDB(){return Promise.resolve();}
+function dbPut(store,obj){return Cloud.upsert(store,obj);}
+function dbDel(store,id){return Cloud.remove(store,id);}
+async function kvGet(key,def){
+  const row=Cloud.data.kv.find(x=>x.key===key);
+  return row?row.value:def;
 }
-function tx(store,mode){return db.transaction(store,mode).objectStore(store);}
-function dbAll(store){return new Promise((res,rej)=>{const r=tx(store).getAll();r.onsuccess=()=>res(r.result);r.onerror=rej;});}
-function dbPut(store,obj){return new Promise((res,rej)=>{const r=tx(store,"readwrite").put(obj);r.onsuccess=()=>res();r.onerror=rej;});}
-function dbDel(store,id){return new Promise((res,rej)=>{const r=tx(store,"readwrite").delete(id);r.onsuccess=()=>res();r.onerror=rej;});}
-function kvGet(key,def){return new Promise(res=>{const r=tx("kv").get(key);r.onsuccess=()=>res(r.result?r.result.value:def);r.onerror=()=>res(def);});}
-function kvSet(key,value){return dbPut("kv",{key,value});}
+function kvSet(key,value){return Cloud.upsert("kv",{key,value});}
 
 /* ============ 状态 ============ */
 const state={batches:[],invoices:[],payments:[],view:"dashboard",filter:{start:"",end:""},fxUSD:25000,wizard:null,openCustomers:new Set(),
   hideSettled:localStorage.getItem("ar_hide_settled")!=="0",
   importTab:"excel",manualRows:null,manualMonth:""};
 async function loadState(){
-  state.batches=await dbAll("batches");
-  state.invoices=await dbAll("invoices");
-  state.payments=await dbAll("payments");
+  state.batches=Cloud.data.batches.slice();
+  state.invoices=Cloud.data.invoices.slice();
+  state.payments=Cloud.data.payments.slice();
   state.fxUSD=await kvGet("fxUSD",25000);
 }
 function invTotal(i){return i.currency==="USD"?i.total*state.fxUSD:i.total;}
@@ -1103,6 +1086,7 @@ function renderData(c){
       <div class="ph"><h3>已导入批次</h3><div class="spacer"></div>
         <button class="btn sm" onclick="backupData()">导出备份</button>
         <button class="btn sm" onclick="$('#restoreFile').click()">恢复备份</button>
+        <button class="btn sm danger" onclick="doLogout()">退出登录</button>
         <input type="file" id="restoreFile" accept=".json" style="display:none"></div>
       <div class="tbl-scroll">
         ${state.batches.length?`<table>
@@ -1205,9 +1189,39 @@ function openModal(h){$("#modalBox").innerHTML=h;$("#modalMask").style.display="
 function closeModal(){$("#modalMask").style.display="none";}
 $("#modalMask").onclick=e=>{if(e.target.id==="modalMask")closeModal();};
 
-/* ============ 启动 ============ */
+/* ============ 登录与启动 ============ */
+async function doLogin(){
+  const email=$("#loginEmail").value.trim(), pw=$("#loginPassword").value;
+  $("#loginErr").textContent="";
+  if(!email||!pw){$("#loginErr").textContent="请输入账号和密码";return;}
+  try{ await Cloud.login(email,pw); }
+  catch(e){
+    const code=e&&e.code||"";
+    $("#loginErr").textContent=code.includes("invalid-credential")||code.includes("wrong-password")
+      ?"账号或密码错误":(code.includes("network")?"网络不可用，请检查连接":"登录失败，请重试");
+  }
+}
+async function doLogout(){
+  if(!confirm("确认退出登录？离线缓存仍保留，重新登录后继续同步。"))return;
+  await Cloud.logout();
+}
+let renderTimer=null;
+function scheduleRender(){
+  clearTimeout(renderTimer);
+  renderTimer=setTimeout(async()=>{await loadState();render();},120);
+}
+document.addEventListener("auth-changed",async e=>{
+  if(e.detail.user){
+    $("#loginMask").style.display="none";
+    if(!window._dataBound){window._dataBound=true;Cloud.onData(scheduleRender);}
+  }else{
+    $("#loginMask").style.display="flex";
+    $("#loginPassword").value="";
+  }
+});
 (async function init(){
+  while(!window.Cloud) await new Promise(r=>setTimeout(r,50));
   await openDB();
-  await loadState();
+  if(Cloud.user){await loadState();}
   render();
 })();

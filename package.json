@@ -19,6 +19,7 @@
     "files": [
       "index.html",
       "app.js",
+      "cloud.js",
       "manifest.webmanifest",
       "sw.js",
       "icons/**/*",
