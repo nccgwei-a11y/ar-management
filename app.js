@@ -559,7 +559,7 @@ function payHistoryHtml(name){
 async function deletePayment(id){
   const p=state.payments.find(x=>x.id===id);
   if(!p)return;
-  if(!confirmDelete("确认撤销该笔收款？对应发票将恢复为未收状态。"))return;
+  if(!await confirmDelete("确认撤销该笔收款？对应发票将恢复为未收状态。"))return;
   for(const a of p.allocations||[]){
     const i=state.invoices.find(x=>x.id===a.invoiceId);
     if(i){
@@ -1159,7 +1159,7 @@ function renderData(c){
 }
 async function deleteBatch(id){
   const b=state.batches.find(x=>x.id===id);
-  if(!confirmDelete("确认删除 "+monthLabel(b.month)+" 全部数据（含收款记录）？"))return;
+  if(!await confirmDelete("确认删除 "+monthLabel(b.month)+" 全部数据（含收款记录）？"))return;
   const invIds=new Set(state.invoices.filter(i=>i.batchId===id).map(i=>i.id));
   for(const p of state.payments.filter(p=>p.allocations.some(a=>invIds.has(a.invoiceId))))await dbDel("payments",p.id);
   await dbDel("batches",id);
