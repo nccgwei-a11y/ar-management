@@ -41,6 +41,15 @@ jobs:
       - run: npm run prepare:www
       - run: npx cap add android
       - run: npx cap sync android
+      - name: 替换安卓原生启动图标为公司 LOGO
+        run: |
+          RES=android/app/src/main/res
+          rm -rf $RES/mipmap-*
+          for pair in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            density=${pair%%:*}; size=${pair##*:}
+            mkdir -p $RES/mipmap-$density
+            cp android-assets/ic_$size.png $RES/mipmap-$density/ic_launcher.png
+          done
       - run: |
           cd android
           chmod +x gradlew
