@@ -1,0 +1,8 @@
+{
+  "appId": "com.factory.ar",
+  "appName": "未收货款管理",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true
+  }
+}

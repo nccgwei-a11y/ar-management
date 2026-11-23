@@ -1,0 +1,44 @@
+# 未收货款管理 · 电脑/手机/网页一体版
+
+同一套代码，GitHub 云端自动打包，产出三种使用方式：
+
+| 产物 | 适用设备 | 获取方式 |
+|---|---|---|
+| 未收货款管理-电脑版.exe | Windows 电脑 | Actions 工件，双击即用免安装 |
+| 未收货款管理-手机版.apk | 安卓手机 | Actions 工件，点击安装 |
+| 网页版（PWA） | 苹果/安卓/电脑浏览器 | GitHub Pages，添加到主屏幕 |
+
+## 一、注册并登录 GitHub（已有账号跳过）
+
+1. 打开 https://github.com/signup ，用邮箱注册，验证邮箱后登录。
+2. 免费账号即可，云端打包完全免费。
+
+## 二、新建仓库并上传代码
+
+1. 右上角 ＋ → New repository，仓库名填 `ar-management`，选 Private（私有），不要勾选初始化文件，点 Create。
+2. 在空仓库页面点 **uploading an existing file**，把本压缩包解压后的**全部文件和文件夹**拖进去（含 .github 文件夹；若看不到 .github，资源管理器“查看”里勾选“隐藏的项目”）。
+3. 页面底部点 **Commit changes**。
+
+## 三、开启网页版（PWA）
+
+1. 仓库 Settings → Pages → Source 选 **GitHub Actions**。
+2. 打包流程会自动部署，约 1–2 分钟后 Pages 页显示网址。
+3. 手机用浏览器打开该网址：
+   - 安卓 Chrome / 苹果 Safari：菜单里选“添加到主屏幕”，桌面出现图标，打开即全屏 APP，离线可用。
+
+## 四、下载 exe 和 APK
+
+1. 仓库顶部 **Actions** 标签，点最新一次运行记录。
+2. 页面底部 Artifacts 里有「电脑版-exe」「手机版-apk」，点击下载（需网页登录 GitHub）。
+3. 电脑：解压后双击 exe，若弹 SmartScreen，点“更多信息 → 仍要运行”。
+4. 安卓：把 apk 发到手机，点击安装，提示“未知来源”时允许即可。
+
+## 五、后续更新代码
+
+每次重新上传文件并 Commit，Actions 会自动重新打包、Pages 自动更新。
+想要正式版本号下载：在仓库 Releases → Draft a new release → 填写 tag（如 v1.0）→ Publish，exe 和 apk 会自动挂到 Releases。
+
+## 数据安全提醒
+
+- 数据保存在各设备本地（exe/APP/浏览器各自独立存储），清缓存或卸载会丢数据。
+- 定期用软件内「管理 → 导出备份」保存 JSON，换设备时用「恢复备份」迁移。

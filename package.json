@@ -1,0 +1,44 @@
+{
+  "name": "ar-management",
+  "version": "1.0.0",
+  "description": "未收货款管理 - 电脑/手机/网页一体版",
+  "main": "electron/main.cjs",
+  "author": "factory",
+  "scripts": {
+    "electron": "electron .",
+    "prepare:www": "node scripts/prepare-www.cjs",
+    "dist:win": "electron-builder --win portable",
+    "dist:android": "npm run prepare:www && cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "build": {
+    "appId": "com.factory.ar",
+    "productName": "未收货款管理",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "index.html",
+      "app.js",
+      "manifest.webmanifest",
+      "sw.js",
+      "icons/**/*",
+      "lib/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "icons/icon-256.png"
+    },
+    "portable": {
+      "artifactName": "未收货款管理-电脑版.exe"
+    }
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/cli": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3"
+  }
+}
