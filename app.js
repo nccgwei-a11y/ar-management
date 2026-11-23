@@ -19,12 +19,43 @@ function invOrder(a,b){
   return (a.month||"").localeCompare(b.month||"")||(a.invoiceNo||"").localeCompare(b.invoiceNo||"");
 }
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now()+"-"+Math.random().toString(16).slice(2));
-/* 删除操作密码（与登录密码一致） */
+/* 删除操作密码（与登录密码一致）；Electron 不支持 prompt，用自定义弹窗 */
 const DELETE_CODE = "858126";
-function confirmDelete(actionText){
-  const pw = prompt("删除操作需要输入密码：");
-  if(pw === null) return false;
-  if(pw !== DELETE_CODE){ alert("密码错误，无法删除"); return false; }
+function askPassword(){
+  return new Promise(resolve=>{
+    openModal(`
+      <h3 style="margin:0 0 6px">删除验证</h3>
+      <div class="muted" style="font-size:12.5px;margin-bottom:12px">删除操作受密码保护，请输入密码</div>
+      <input id="delPwInput" type="password" placeholder="请输入密码" style="width:100%;padding:9px;box-sizing:border-box">
+      <div id="delPwErr" style="color:#dc2626;font-size:12.5px;min-height:18px;margin-top:6px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="btn sm" id="delPwCancel">取消</button>
+        <button class="btn sm danger" id="delPwOk">确认</button>
+      </div>`);
+    const input=$("#delPwInput"), mask=$("#modalMask");
+    setTimeout(()=>input.focus(),0);
+    function cleanup(){
+      $("#delPwOk").onclick=null;$("#delPwCancel").onclick=null;
+      input.onkeydown=null;mask.removeEventListener("click",maskClick);
+    }
+    function done(val){cleanup();closeModal();resolve(val);}
+    function maskClick(e){if(e.target.id==="modalMask")done(null);}
+    mask.addEventListener("click",maskClick);
+    $("#delPwCancel").onclick=()=>done(null);
+    $("#delPwOk").onclick=()=>{
+      if(input.value===""){$("#delPwErr").textContent="请输入密码";return;}
+      done(input.value);
+    };
+    input.onkeydown=e=>{
+      if(e.key==="Enter")$("#delPwOk").click();
+      if(e.key==="Escape")done(null);
+    };
+  });
+}
+async function confirmDelete(actionText){
+  const pw=await askPassword();
+  if(pw===null)return false;
+  if(pw!==DELETE_CODE){alert("密码错误，无法删除");return false;}
   return confirm(actionText);
 }
 
