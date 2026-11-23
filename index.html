@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>越南協發有限公司财务管理</title>
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
 <meta name="theme-color" content="#0f1b33">
 <script src="lib/xlsx.full.min.js"></script>
 <style>
@@ -26,7 +27,8 @@ body{font-family:"Microsoft YaHei","Segoe UI",sans-serif;background:var(--bg);co
 .content::-webkit-scrollbar-corner{background:#e9edf3}
 .side{width:200px;background:#0f1b33;color:#cbd5e1;flex-shrink:0;display:flex;flex-direction:column}
 .side .logo{padding:22px 20px;font-size:17px;font-weight:700;color:#fff;letter-spacing:.5px}
-.side .logo small{display:block;font-size:11px;font-weight:400;color:#7d8aa3;margin-top:4px}
+.side .logo img{width:150px;height:auto;display:block;background:#fff;border-radius:10px;padding:10px;box-sizing:border-box}
+.side .logo small{display:block;font-size:11px;font-weight:400;color:#7d8aa3;margin-top:8px}
 .nav{padding:8px 12px;flex:1}
 .nav button{width:100%;display:flex;align-items:center;gap:10px;padding:11px 14px;border:0;background:transparent;color:#9fb0c8;border-radius:8px;cursor:pointer;font-size:14px;margin-bottom:4px;text-align:left}
 .nav button:hover{background:#1b2c4d;color:#fff}
@@ -148,7 +150,7 @@ tr.open .caret{transform:rotate(90deg)}
 <body>
 <div class="app" style="display:flex">
   <aside class="side">
-    <div class="logo">越南協發有限公司财务管理<small>客户应收 · 三端实时同步</small></div>
+    <div class="logo"><img src="icons/logo-sidebar.png" alt="Hiệp Phát"><small>越南協發有限公司财务管理 · 三端实时同步</small></div>
     <nav class="nav">
       <button data-view="dashboard" class="active">📊 总览</button>
       <button data-view="customers">🏢 客户</button>
@@ -175,8 +177,9 @@ tr.open .caret{transform:rotate(90deg)}
 <div class="modal-mask" id="modalMask"><div class="modal" id="modalBox"></div></div>
 <div class="modal-mask" id="loginMask" style="display:flex">
   <div class="modal" style="max-width:380px">
-    <h3 style="margin:0 0 4px">越南協發有限公司财务管理</h3>
-    <div class="muted" style="font-size:12.5px;margin-bottom:14px">登录后数据实时同步，登录状态自动保留</div>
+    <img src="icons/logo-login.png" alt="Hiệp Phát" style="width:130px;display:block;margin:0 auto 10px">
+    <h3 style="margin:0 0 4px;text-align:center">越南協發有限公司财务管理</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:14px;text-align:center">登录后数据实时同步，登录状态自动保留</div>
     <label style="font-size:12.5px">账号</label>
     <input id="loginEmail" type="email" value="admin@hiepphat.local" style="width:100%;margin:4px 0 10px;padding:9px">
     <label style="font-size:12.5px">密码</label>
