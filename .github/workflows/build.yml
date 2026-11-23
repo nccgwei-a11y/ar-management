@@ -49,6 +49,7 @@ jobs:
             density=${pair%%:*}; size=${pair##*:}
             mkdir -p $RES/mipmap-$density
             cp android-assets/ic_$size.png $RES/mipmap-$density/ic_launcher.png
+            cp android-assets/ic_$size.png $RES/mipmap-$density/ic_launcher_round.png
           done
       - run: |
           cd android
