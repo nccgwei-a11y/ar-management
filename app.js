@@ -19,6 +19,14 @@ function invOrder(a,b){
   return (a.month||"").localeCompare(b.month||"")||(a.invoiceNo||"").localeCompare(b.invoiceNo||"");
 }
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now()+"-"+Math.random().toString(16).slice(2));
+/* 删除操作密码（与登录密码一致） */
+const DELETE_CODE = "858126";
+function confirmDelete(actionText){
+  const pw = prompt("删除操作需要输入密码：");
+  if(pw === null) return false;
+  if(pw !== DELETE_CODE){ alert("密码错误，无法删除"); return false; }
+  return confirm(actionText);
+}
 
 /* ============ Firebase 云端存储（离线缓存由 SDK 负责） ============ */
 function openDB(){return Promise.resolve();}
@@ -520,7 +528,7 @@ function payHistoryHtml(name){
 async function deletePayment(id){
   const p=state.payments.find(x=>x.id===id);
   if(!p)return;
-  if(!confirm("确认撤销该笔收款？对应发票将恢复为未收状态。"))return;
+  if(!confirmDelete("确认撤销该笔收款？对应发票将恢复为未收状态。"))return;
   for(const a of p.allocations||[]){
     const i=state.invoices.find(x=>x.id===a.invoiceId);
     if(i){
@@ -1120,7 +1128,7 @@ function renderData(c){
 }
 async function deleteBatch(id){
   const b=state.batches.find(x=>x.id===id);
-  if(!confirm("确认删除 "+monthLabel(b.month)+" 全部数据（含收款记录）？"))return;
+  if(!confirmDelete("确认删除 "+monthLabel(b.month)+" 全部数据（含收款记录）？"))return;
   const invIds=new Set(state.invoices.filter(i=>i.batchId===id).map(i=>i.id));
   for(const p of state.payments.filter(p=>p.allocations.some(a=>invIds.has(a.invoiceId))))await dbDel("payments",p.id);
   await dbDel("batches",id);
