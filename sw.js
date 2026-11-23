@@ -1,5 +1,5 @@
-/* 离线缓存：安装后应用外壳全部可离线使用 */
-const CACHE = "ar-app-v8";
+/* 离线缓存：HTML/JS 网络优先（保证更新及时），其余资源缓存优先，离线整体可用 */
+const CACHE = "ar-app-v9";
 const ASSETS = [
   "./",
   "./index.html",
@@ -27,13 +27,29 @@ self.addEventListener("activate", e => {
   );
 });
 
+function isFresh(req){
+  return req.mode === "navigate" || req.destination === "script" ||
+         req.url.endsWith(".html") || req.url.endsWith(".js");
+}
+
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
-  e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(resp => {
-      const copy = resp.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy));
-      return resp;
-    }).catch(() => caches.match("./index.html")))
-  );
+  if (isFresh(e.request)) {
+    // 网络优先：有网永远拿最新代码，同时刷新缓存；无网回退缓存
+    e.respondWith(
+      fetch(e.request).then(resp => {
+        const copy = resp.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+        return resp;
+      }).catch(() => caches.match(e.request).then(hit => hit || caches.match("./index.html")))
+    );
+  } else {
+    e.respondWith(
+      caches.match(e.request).then(hit => hit || fetch(e.request).then(resp => {
+        const copy = resp.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+        return resp;
+      }).catch(() => caches.match("./index.html")))
+    );
+  }
 });
