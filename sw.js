@@ -1,5 +1,5 @@
 /* 离线缓存：安装后应用外壳全部可离线使用 */
-const CACHE = "ar-app-v2";
+const CACHE = "ar-app-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,9 +7,9 @@ const ASSETS = [
   "./cloud.js",
   "./manifest.webmanifest",
   "./lib/xlsx.full.min.js",
-  "./lib/firebase/firebase-app.js",
-  "./lib/firebase/firebase-auth.js",
-  "./lib/firebase/firebase-firestore.js",
+  "./lib/firebase/firebase-app-compat.js",
+  "./lib/firebase/firebase-auth-compat.js",
+  "./lib/firebase/firebase-firestore-compat.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
 ];

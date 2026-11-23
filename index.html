@@ -173,7 +173,7 @@ tr.open .caret{transform:rotate(90deg)}
   </div>
 </div>
 <div class="modal-mask" id="modalMask"><div class="modal" id="modalBox"></div></div>
-<div class="modal-mask" id="loginMask" style="display:none">
+<div class="modal-mask" id="loginMask" style="display:flex">
   <div class="modal" style="max-width:380px">
     <h3 style="margin:0 0 4px">越南協發有限公司财务管理</h3>
     <div class="muted" style="font-size:12.5px;margin-bottom:14px">登录后数据实时同步，登录状态自动保留</div>
@@ -185,7 +185,10 @@ tr.open .caret{transform:rotate(90deg)}
     <button class="btn primary" style="width:100%;justify-content:center" onclick="doLogin()">登录</button>
   </div>
 </div>
-<script type="module" src="cloud.js"></script>
+<script src="lib/firebase/firebase-app-compat.js"></script>
+<script src="lib/firebase/firebase-auth-compat.js"></script>
+<script src="lib/firebase/firebase-firestore-compat.js"></script>
+<script src="cloud.js"></script>
 <script src="app.js"></script>
 <script>
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
