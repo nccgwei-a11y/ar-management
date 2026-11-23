@@ -45,16 +45,16 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
-      - run: cp android/app/build/outputs/apk/debug/app-debug.apk 未收货款管理-手机版.apk
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk 越南協發有限公司财务管理-手机版.apk
       - uses: actions/upload-artifact@v4
         with:
           name: 手机版-apk
-          path: 未收货款管理-手机版.apk
+          path: 越南協發有限公司财务管理-手机版.apk
       - name: 发布到 Releases（打 tag 时）
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: 未收货款管理-手机版.apk
+          files: 越南協發有限公司财务管理-手机版.apk
 
   deploy-pages:
     runs-on: ubuntu-latest

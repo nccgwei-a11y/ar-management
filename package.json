@@ -1,7 +1,7 @@
 {
   "name": "ar-management",
   "version": "1.0.0",
-  "description": "未收货款管理 - 电脑/手机/网页一体版",
+  "description": "越南協發有限公司财务管理 - 电脑/手机/网页一体版",
   "main": "electron/main.cjs",
   "author": "factory",
   "scripts": {
@@ -12,7 +12,7 @@
   },
   "build": {
     "appId": "com.factory.ar",
-    "productName": "未收货款管理",
+    "productName": "越南協發有限公司财务管理",
     "directories": {
       "output": "release"
     },
@@ -31,7 +31,7 @@
       "icon": "icons/icon-256.png"
     },
     "portable": {
-      "artifactName": "未收货款管理-电脑版.exe"
+      "artifactName": "越南協發有限公司财务管理-电脑版.exe"
     }
   },
   "devDependencies": {

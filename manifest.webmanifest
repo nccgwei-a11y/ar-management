@@ -1,7 +1,7 @@
 {
-  "name": "未收货款管理",
-  "short_name": "未收货款",
-  "description": "客户未收货款管理",
+  "name": "越南協發有限公司财务管理",
+  "short_name": "協發财务管理",
+  "description": "越南協發有限公司财务管理",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

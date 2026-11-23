@@ -7,7 +7,7 @@ function createWindow() {
     height: 820,
     minWidth: 900,
     minHeight: 600,
-    title: "未收货款管理",
+    title: "越南協發有限公司财务管理",
     icon: path.join(__dirname, "..", "icons", "icon-256.png"),
     webPreferences: { contextIsolation: true, nodeIntegration: false }
   });
