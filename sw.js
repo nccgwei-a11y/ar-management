@@ -1,5 +1,5 @@
 /* 离线缓存：安装后应用外壳全部可离线使用 */
-const CACHE = "ar-app-v4";
+const CACHE = "ar-app-v5";
 const ASSETS = [
   "./",
   "./index.html",

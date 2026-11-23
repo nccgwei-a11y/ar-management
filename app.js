@@ -33,6 +33,7 @@ function kvSet(key,value){return Cloud.upsert("kv",{key,value});}
 /* ============ 状态 ============ */
 const state={batches:[],invoices:[],payments:[],view:"dashboard",filter:{start:"",end:""},fxUSD:25000,wizard:null,openCustomers:new Set(),
   hideSettled:localStorage.getItem("ar_hide_settled")!=="0",
+  monthSort:localStorage.getItem("ar_month_sort")==="desc"?"desc":"asc",
   importTab:"excel",manualRows:null,manualMonth:""};
 async function loadState(){
   state.batches=Cloud.data.batches.slice();
@@ -139,6 +140,11 @@ function exportMonthPreview(m){
 }
 
 /* ============ 看板 ============ */
+function toggleMonthSort(){
+  state.monthSort=state.monthSort==="asc"?"desc":"asc";
+  localStorage.setItem("ar_month_sort",state.monthSort);
+  render();
+}
 function renderDashboard(c){
   const list=filteredInvoices();
   const totalAll=list.reduce((s,i)=>s+invTotal(i),0);
@@ -155,7 +161,7 @@ function renderDashboard(c){
     const s=mStats.get(i.month);
     s.count++;s.cust.add(i.customer);s.total+=invTotal(i);s.paid+=invPaid(i);s.fee+=invFee(i);s.unpaid+=invUnpaid(i);
   });
-  const mRows=[...mStats.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+  const mRows=[...mStats.entries()].sort((a,b)=>state.monthSort==="desc"?b[0].localeCompare(a[0]):a[0].localeCompare(b[0]));
   c.innerHTML=`
     <div class="cards">
       <div class="kpi"><div class="label">全部未收货款总计</div><div class="num red">${fmtVND(unpaidAll)}</div><div class="hint">VND · ${state.filter.start||state.filter.end?"筛选区间内":"所有月份"}</div></div>
@@ -167,7 +173,7 @@ function renderDashboard(c){
       <div class="ph"><h3>月度汇总</h3><div class="spacer"></div><button class="btn sm" onclick="exportDashboard()">导出 Excel</button></div>
       <div class="tbl-scroll">
         ${mRows.length?`<table>
-          <thead><tr><th>月份</th><th class="num">发票数</th><th class="num">客户数</th><th class="num">发票总额</th><th class="num">实际收入</th><th class="num">手续费</th><th class="num">未收</th><th></th></tr></thead>
+          <thead><tr><th class="sortable" onclick="toggleMonthSort()">月份 ${state.monthSort==="desc"?"▼":"▲"}</th><th class="num">发票数</th><th class="num">客户数</th><th class="num">发票总额</th><th class="num">实际收入</th><th class="num">手续费</th><th class="num">未收</th><th></th></tr></thead>
           <tbody>
             ${mRows.map(([m,s])=>`<tr>
               <td><b>${monthLabel(m)}</b></td><td class="num">${s.count}</td><td class="num">${s.cust.size}</td>
@@ -1152,7 +1158,7 @@ function exportDashboard(){
     const s=mStats.get(i.month);
     s.count++;s.cust.add(i.customer);s.total+=invTotal(i);s.paid+=invPaid(i);s.fee+=invFee(i);s.unpaid+=invUnpaid(i);
   });
-  [...mStats.entries()].sort((a,b)=>a[0].localeCompare(b[0])).forEach(([m,s])=>{
+  [...mStats.entries()].sort((a,b)=>state.monthSort==="desc"?b[0].localeCompare(a[0]):a[0].localeCompare(b[0])).forEach(([m,s])=>{
     rows.push({"月份":monthLabel(m),"发票数":s.count,"客户数":s.cust.size,
       "发票总额(VND)":Math.round(s.total),"实际收入(VND)":Math.round(s.paid),
       "手续费(VND)":Math.round(s.fee),"未收(VND)":Math.round(s.unpaid)});
