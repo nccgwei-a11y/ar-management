@@ -1,4 +1,4 @@
-// Firebase 云端同步（compat SDK）：登录 + Firestore 实时监听 + 离线缓存 + 旧本地数据迁移
+// Firebase 云端同步（compat SDK）：登录 + Firestore 实时监听 + 离线缓存 + 旧本地数据迁移 + 同步状态
 (function () {
   "use strict";
 
@@ -19,10 +19,13 @@
   db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
 
   const COLLECTIONS = ["batches", "invoices", "payments", "kv"];
+  const snapMeta = {};   // 每个集合最近一次快照元数据
+  const snapErrors = {}; // 每个集合最近一次错误
   const cloud = {
     user: null, ready: false,
     data: { batches: [], invoices: [], payments: [], kv: [] },
-    listeners: [],
+    listeners: [], statusListeners: [],
+    status: "loading", lastSyncAt: null,
 
     login(email, password) {
       return auth.signInWithEmailAndPassword(email, password);
@@ -38,17 +41,48 @@
     },
 
     onData(cb) { this.listeners.push(cb); },
+    onStatus(cb) { this.statusListeners.push(cb); },
     _emit() { this.listeners.forEach(cb => cb(this.data)); },
+    _emitStatus() { this.statusListeners.forEach(cb => cb(this.status, this.lastSyncAt)); },
+
+    /* 汇总各集合快照，得出整体同步状态：
+       loading 连接中 / online 已同步 / syncing 本地改动待上传 / offline 离线缓存 / error 出错 / signedout 未登录 */
+    _refreshStatus() {
+      if (!this.user) { this.status = "signedout"; }
+      else if (Object.keys(snapErrors).length) { this.status = "error"; }
+      else {
+        const reported = COLLECTIONS.every(c => snapMeta[c]);
+        if (!reported) this.status = "loading";
+        else if (COLLECTIONS.some(c => snapMeta[c].pendingWrites)) this.status = "syncing";
+        else if (COLLECTIONS.some(c => snapMeta[c].fromCache)) this.status = "offline";
+        else this.status = "online";
+      }
+      this._emitStatus();
+    },
 
     start() {
       COLLECTIONS.forEach(cname => {
         db.collection(cname).onSnapshot(snap => {
           this.data[cname] = snap.docs.map(d => d.data());
           this.ready = true;
+          snapMeta[cname] = {
+            fromCache: !!snap.metadata.fromCache,
+            pendingWrites: !!snap.metadata.hasPendingWrites,
+          };
+          if (!snap.metadata.fromCache) this.lastSyncAt = new Date();
+          delete snapErrors[cname];
+          this._refreshStatus();
           this._emit();
           if (cname === "invoices") this._maybeMigrate();
-        }, err => console.warn("sync", cname, err));
+        }, err => {
+          snapErrors[cname] = err;
+          this._refreshStatus();
+          console.warn("sync", cname, err);
+        });
       });
+      const goOnline = () => this._refreshStatus();
+      window.addEventListener("online", goOnline);
+      window.addEventListener("offline", goOnline);
     },
 
     /* 旧版 IndexedDB（ar-web-db）一次性迁移到云端，仅在云端无发票时执行 */
@@ -94,8 +128,10 @@
     cloud.user = user;
     if (user) {
       if (!cloud._started) { cloud._started = true; cloud.start(); }
+      cloud._refreshStatus();
       document.dispatchEvent(new CustomEvent("auth-changed", { detail: { user: true } }));
     } else {
+      cloud._refreshStatus();
       document.dispatchEvent(new CustomEvent("auth-changed", { detail: { user: false } }));
     }
   });

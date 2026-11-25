@@ -1,5 +1,5 @@
 /* 离线缓存：HTML/JS 网络优先（保证更新及时），其余资源缓存优先，离线整体可用 */
-const CACHE = "ar-app-v9";
+const CACHE = "ar-app-v10";
 const ASSETS = [
   "./",
   "./index.html",

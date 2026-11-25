@@ -70,9 +70,17 @@ async function kvGet(key,def){
 function kvSet(key,value){return Cloud.upsert("kv",{key,value});}
 
 /* ============ 状态 ============ */
+function readJSON(key,def){
+  try{const v=localStorage.getItem(key);return v?JSON.parse(v):def;}catch(e){return def;}
+}
 const state={batches:[],invoices:[],payments:[],view:"dashboard",filter:{start:"",end:""},fxUSD:25000,wizard:null,openCustomers:new Set(),
   hideSettled:localStorage.getItem("ar_hide_settled")!=="0",
   monthSort:localStorage.getItem("ar_month_sort")==="desc"?"desc":"asc",
+  statusFilter:localStorage.getItem("ar_status_filter")||"all",
+  currencyFilter:localStorage.getItem("ar_currency_filter")||"all",
+  q:"",custQ:"",
+  custSort:readJSON("ar_cust_sort",{key:"unpaid",dir:"desc"}),
+  invSort:readJSON("ar_inv_sort",{key:"month",dir:"asc"}),
   importTab:"excel",manualRows:null,manualMonth:""};
 async function loadState(){
   state.batches=Cloud.data.batches.slice();
@@ -84,9 +92,79 @@ function invTotal(i){return i.currency==="USD"?i.total*state.fxUSD:i.total;}
 function invPaid(i){return i.currency==="USD"?(i.paidAmount||0)*state.fxUSD:(i.paidAmount||0);}
 function invFee(i){return i.currency==="USD"?(i.fee||0)*state.fxUSD:(i.fee||0);}
 function invUnpaid(i){return Math.max(0,invTotal(i)-invPaid(i)-invFee(i));}
+function invoiceStatus(i){
+  if(i.cash) return "cash";
+  if(invUnpaid(i)<=0) return "paid";
+  if((i.paidAmount||0)>0) return "partial";
+  return "unpaid";
+}
+function matchQuery(i,q){
+  if(!q) return true;
+  const hay=[i.customer,i.code,i.invoiceNo,i.taxNo,i.address,i.date]
+    .map(x=>normStr(String(x??""))).join(" ");
+  return hay.includes(normStr(q));
+}
 function filteredInvoices(){
   const {start,end}=state.filter;
-  return state.invoices.filter(i=>(!start||i.month>=start)&&(!end||i.month<=end));
+  const q=state.q.trim().toLowerCase();
+  return state.invoices.filter(i=>{
+    if(start&&i.month<start) return false;
+    if(end&&i.month>end) return false;
+    if(state.statusFilter!=="all"&&invoiceStatus(i)!==state.statusFilter) return false;
+    if(state.currencyFilter!=="all"&&(i.currency||"VND")!==state.currencyFilter) return false;
+    if(!matchQuery(i,q)) return false;
+    return true;
+  });
+}
+
+/* ============ 排序 ============ */
+function sortInvoices(list){
+  const k=state.invSort.key, dir=state.invSort.dir==="asc"?1:-1;
+  return list.slice().sort((a,b)=>{
+    let r=0;
+    if(k==="date") r=String(a.date||"").localeCompare(String(b.date||""));
+    else if(k==="invoiceNo") r=String(a.invoiceNo||"").localeCompare(String(b.invoiceNo||""));
+    else if(k==="total") r=invTotal(a)-invTotal(b);
+    else if(k==="paid") r=invPaid(a)-invPaid(b);
+    else if(k==="fee") r=invFee(a)-invFee(b);
+    else if(k==="unpaid") r=invUnpaid(a)-invUnpaid(b);
+    else r=invOrder(a,b);
+    return r*dir;
+  });
+}
+function toggleInvSort(key){
+  if(state.invSort.key===key) state.invSort.dir=state.invSort.dir==="asc"?"desc":"asc";
+  else state.invSort={key,dir:key==="date"||key==="invoiceNo"?"asc":"desc"};
+  localStorage.setItem("ar_inv_sort",JSON.stringify(state.invSort));
+  render();
+}
+function toggleCustSort(key){
+  if(state.custSort.key===key) state.custSort.dir=state.custSort.dir==="asc"?"desc":"asc";
+  else state.custSort={key,dir:key==="customer"||key==="code"?"asc":"desc"};
+  localStorage.setItem("ar_cust_sort",JSON.stringify(state.custSort));
+  render();
+}
+function sortArrow(key){
+  return state.invSort.key===key?(state.invSort.dir==="asc"?" ▲":" ▼"):"";
+}
+function custSortArrow(key){
+  return state.custSort.key===key?(state.custSort.dir==="asc"?" ▲":" ▼"):"";
+}
+
+/* ============ 同步状态徽章 ============ */
+const SYNC_META={
+  loading:["连接中",false],online:["已同步",false],syncing:["同步中…",false],
+  offline:["离线·缓存",false],error:["同步出错",false],signedout:["未登录",false]
+};
+function updateSyncChip(status,lastAt){
+  const chip=$("#syncChip"); if(!chip) return;
+  const label=(SYNC_META[status]||SYNC_META.loading)[0];
+  chip.className="sync "+status;
+  $("#syncText").textContent=label;
+  $("#syncTime").textContent=(lastAt&&(status==="online"||status==="syncing"))
+    ?"· "+new Date(lastAt).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})
+    :"";
+  chip.title={loading:"正在连接云端…",online:"数据已与云端同步",syncing:"本地改动正在上传",offline:"当前离线，使用本机缓存数据",error:"同步出错，请检查网络后重试",signedout:"未登录"}[status]||"";
 }
 
 /* ============ 导航 ============ */
@@ -98,7 +176,20 @@ document.querySelectorAll(".nav button").forEach(b=>{
 });
 $("#startMonth").onchange=e=>{state.filter.start=e.target.value;render();};
 $("#endMonth").onchange=e=>{state.filter.end=e.target.value;render();};
-$("#resetFilter").onclick=()=>{state.filter={start:"",end:""};$("#startMonth").value="";$("#endMonth").value="";render();};
+$("#globalSearch").oninput=e=>{state.q=e.target.value;render();};
+$("#statusFilter").onchange=e=>{
+  state.statusFilter=e.target.value;localStorage.setItem("ar_status_filter",state.statusFilter);render();
+};
+$("#currencyFilter").onchange=e=>{
+  state.currencyFilter=e.target.value;localStorage.setItem("ar_currency_filter",state.currencyFilter);render();
+};
+$("#resetFilter").onclick=()=>{
+  state.filter={start:"",end:""};state.q="";state.statusFilter="all";state.currencyFilter="all";
+  $("#startMonth").value="";$("#endMonth").value="";$("#globalSearch").value="";
+  $("#statusFilter").value="all";$("#currencyFilter").value="all";
+  localStorage.setItem("ar_status_filter","all");localStorage.setItem("ar_currency_filter","all");
+  render();
+};
 
 function render(){
   const titles={dashboard:"总览看板",customers:"客户欠款",import:"导入对账单",data:"数据管理",
@@ -119,7 +210,7 @@ function openMonthPreview(m){state.previewMonth=m;state.view="preview";
 function renderMonthPreview(c){
   const m=state.previewMonth;
   const batch=state.batches.find(b=>b.month===m);
-  const list=state.invoices.filter(i=>i.month===m).sort(invOrder);
+  const list=sortInvoices(filteredInvoices().filter(i=>i.month===m));
   const gSum=list.reduce((s,i)=>s+(i.currency==="USD"?i.goods*state.fxUSD:i.goods),0);
   const tSum=list.reduce((s,i)=>s+(i.currency==="USD"?i.tax*state.fxUSD:i.tax),0);
   const totSum=list.reduce((s,i)=>s+invTotal(i),0);
@@ -131,22 +222,22 @@ function renderMonthPreview(c){
       <button class="btn" onclick="goDashboard()">← 返回看板</button>
       <b style="font-size:16px">${monthLabel(m)} 对账单</b>
       <span class="muted">${batch?esc(batch.fileName):""} · 导入于 ${batch?new Date(batch.importedAt).toLocaleString("zh-CN"):"—"}</span>
+      <span class="result-count">${list.length} 张发票</span>
       <div class="spacer"></div>
       <button class="btn primary" onclick="exportMonthPreview('${m}')">导出该月 Excel</button>
     </div>
-    <div class="muted" style="margin-bottom:10px;font-size:12.5px">行颜色标记：点击每行右侧色点标记（红/黄/蓝/绿），再点一次同色或 × 清除，标记自动保存</div>
+    <div class="muted" style="margin-bottom:10px;font-size:12.5px">行颜色标记：点击每行右侧色点标记（红/黄/蓝/绿），再点一次同色或 × 清除，标记自动保存；点击表头可排序。</div>
     <div class="panel">
       <div class="tbl-scroll">
         ${list.length?`<table>
           <thead><tr>
-            <th>STT</th><th>客户代码</th><th>开票日期</th><th>发票号</th><th>公司名称</th><th>税号</th>
-            <th>地址</th><th class="num">货款</th><th class="num">增值税</th><th class="num">含税总额</th>
-            <th class="num">实际收入</th><th class="num">手续费</th><th class="num">未收</th><th>状态</th><th>标记</th>
+            <th>STT</th><th>客户代码</th><th class="sortable" onclick="toggleInvSort('date')">开票日期${sortArrow('date')}</th><th class="sortable" onclick="toggleInvSort('invoiceNo')">发票号${sortArrow('invoiceNo')}</th><th>公司名称</th><th>税号</th>
+            <th>地址</th><th class="num">货款</th><th class="num">增值税</th><th class="num sortable" onclick="toggleInvSort('total')">含税总额${sortArrow('total')}</th>
+            <th class="num sortable" onclick="toggleInvSort('paid')">实际收入${sortArrow('paid')}</th><th class="num sortable" onclick="toggleInvSort('fee')">手续费${sortArrow('fee')}</th><th class="num sortable" onclick="toggleInvSort('unpaid')">未收${sortArrow('unpaid')}</th><th>状态</th><th>标记</th>
           </tr></thead>
           <tbody>
             ${list.map((i,k)=>`<tr class="${i.mark?"mark-"+i.mark:""}">
-              <td>${k+1}</td><td>${esc(i.code)}</td><td>${esc(i.date)}</td><td>${esc(i.invoiceNo)}</td>
-              <td class="name">${esc(i.customer)} ${i.currency==="USD"?'<span class="tag usd">USD</span>':""}</td>
+              <td>${k+1}</td><td>${esc(i.code)}</td><td>${esc(i.date)}</td><td>${esc(i.invoiceNo)}</td><td class="name">${esc(i.customer)} ${i.currency==="USD"?'<span class="tag usd">USD</span>':""}</td>
               <td>${esc(i.taxNo)||"—"}</td><td class="name">${esc(i.address)||"—"}</td>
               <td class="num">${i.currency==="USD"?fmtUSD(i.goods):fmtVND(i.goods)}</td>
               <td class="num">${i.currency==="USD"?fmtUSD(i.tax):fmtVND(i.tax)}</td>
@@ -164,7 +255,7 @@ function renderMonthPreview(c){
       </div></div>`;
 }
 function exportMonthPreview(m){
-  const list=state.invoices.filter(i=>i.month===m).sort(invOrder);
+  const list=sortInvoices(state.invoices.filter(i=>i.month===m));
   const rows=list.map((i,k)=>({
     "STT":k+1,"客户代码":i.code,"开票日期":i.date,"发票号":i.invoiceNo,"公司名称":i.customer,
     "税号":i.taxNo||"","地址":i.address||"","币种":i.currency,
@@ -203,13 +294,13 @@ function renderDashboard(c){
   const mRows=[...mStats.entries()].sort((a,b)=>state.monthSort==="desc"?b[0].localeCompare(a[0]):a[0].localeCompare(b[0]));
   c.innerHTML=`
     <div class="cards">
-      <div class="kpi"><div class="label">全部未收货款总计</div><div class="num red">${fmtVND(unpaidAll)}</div><div class="hint">VND · ${state.filter.start||state.filter.end?"筛选区间内":"所有月份"}</div></div>
+      <div class="kpi"><div class="label">全部未收货款总计</div><div class="num red">${fmtVND(unpaidAll)}</div><div class="hint">VND · ${state.filter.start||state.filter.end||state.q||state.statusFilter!=="all"||state.currencyFilter!=="all"?"筛选区间内":"所有月份"}</div></div>
       <div class="kpi"><div class="label">实际货款收入</div><div class="num green">${fmtVND(paidAll)}</div><div class="hint">发票总额 ${fmtVND(totalAll)} · 手续费 ${fmtVND(feeAll)}</div></div>
       <div class="kpi"><div class="label">未收客户数</div><div class="num purple">${custSet.size}</div><div class="hint">共 ${list.length} 张发票</div></div>
       <div class="kpi"><div class="label">最新月份未收（${latest?monthLabel(latest):"—"}）</div><div class="num green">${fmtVND(latestUnpaid)}</div><div class="hint">点击下方月份查看明细</div></div>
     </div>
     <div class="panel">
-      <div class="ph"><h3>月度汇总</h3><div class="spacer"></div><button class="btn sm" onclick="exportDashboard()">导出 Excel</button></div>
+      <div class="ph"><h3>月度汇总</h3><span class="result-count">${state.invoices.length} 张发票</span><div class="spacer"></div><button class="btn sm" onclick="exportDashboard()">导出 Excel</button></div>
       <div class="tbl-scroll">
         ${mRows.length?`<table>
           <thead><tr><th class="sortable" onclick="toggleMonthSort()">月份 ${state.monthSort==="desc"?"▼":"▲"}</th><th class="num">发票数</th><th class="num">客户数</th><th class="num">发票总额</th><th class="num">实际收入</th><th class="num">手续费</th><th class="num">未收</th><th></th></tr></thead>
@@ -244,26 +335,41 @@ function renderCustomers(c){
     const s=map.get(i.customer);
     s.total+=invTotal(i);s.paid+=invPaid(i);s.fee+=invFee(i);s.unpaid+=invUnpaid(i);s.items.push(i);
   });
-  map.forEach(s=>s.items.sort(invOrder));
+  map.forEach(s=>s.items=sortInvoices(s.items));
   let arr=[...map.values()];
   if(state.hideSettled)arr=arr.filter(s=>s.unpaid>0);
   arr.sort((a,b)=>{
-    if((a.unpaid>0)!==(b.unpaid>0))return a.unpaid>0?-1:1;
-    return b.unpaid-a.unpaid;
+    const k=state.custSort.key;let r=0;
+    if(k==="customer") r=a.customer.localeCompare(b.customer,"vi");
+    else if(k==="code") r=(a.code||"").localeCompare(b.code||"","vi");
+    else if(k==="count") r=a.items.length-b.items.length;
+    else if(k==="total") r=a.total-b.total;
+    else if(k==="paid") r=a.paid-b.paid;
+    else if(k==="fee") r=a.fee-b.fee;
+    else r=a.unpaid-b.unpaid;
+    return state.custSort.dir==="asc"?r:-r;
   });
   const grand=arr.reduce((s,x)=>s+x.unpaid,0);
   c.innerHTML=`
     <div class="panel">
-      <div class="ph"><h3>客户未收明细</h3><div class="spacer"></div>
+      <div class="ph"><h3>客户未收明细</h3><span class="result-count">${arr.length} 个客户 · ${list.length} 张发票</span><div class="spacer"></div>
         <label style="display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer">
           <input type="checkbox" id="hideSettledChk" style="width:auto;min-width:0">
           隐藏已清款
         </label>
-        <input class="search" id="custSearch" placeholder="搜索公司 / 代码">
+        <input class="search" id="custSearch" placeholder="搜索公司 / 代码" value="${esc(state.custQ)}">
         <button class="btn sm" onclick="exportCustomers()">导出 Excel（含已清款）</button></div>
       <div class="tbl-scroll">
         ${arr.length?`<table>
-          <thead><tr><th></th><th>客户</th><th>代码</th><th class="num">发票总额</th><th class="num">实际收入</th><th class="num">手续费</th><th class="num">未收余额</th><th>状态</th><th></th></tr></thead>
+          <thead><tr><th></th>
+            <th class="sortable" onclick="toggleCustSort('customer')">客户${custSortArrow('customer')}</th>
+            <th class="sortable" onclick="toggleCustSort('code')">代码${custSortArrow('code')}</th>
+            <th class="sortable num" onclick="toggleCustSort('count')">发票数${custSortArrow('count')}</th>
+            <th class="sortable num" onclick="toggleCustSort('total')">发票总额${custSortArrow('total')}</th>
+            <th class="sortable num" onclick="toggleCustSort('paid')">实际收入${custSortArrow('paid')}</th>
+            <th class="sortable num" onclick="toggleCustSort('fee')">手续费${custSortArrow('fee')}</th>
+            <th class="sortable num" onclick="toggleCustSort('unpaid')">未收余额${custSortArrow('unpaid')}</th>
+            <th>状态</th><th></th></tr></thead>
           <tbody id="custBody">
             ${arr.map(s=>{
               const st=s.unpaid<=0?'<span class="tag paid">已结清</span>':(s.paid>0?'<span class="tag part">部分收款</span>':'<span class="tag unpaid">未收</span>');
@@ -271,6 +377,7 @@ function renderCustomers(c){
               <tr class="cust-row ${state.openCustomers.has(s.customer)?'open':''}" data-name="${esc(s.customer)}" data-code="${esc(s.code)}">
                 <td><span class="caret">▶</span></td>
                 <td class="name"><b>${esc(s.customer)}</b></td><td class="muted">${esc(s.code)||"—"}</td>
+                <td class="num">${s.items.length}</td>
                 <td class="num">${fmtVND(s.total)}</td><td class="num green">${fmtVND(s.paid)}</td>
                 <td class="num amber">${s.fee?fmtVND(s.fee):"0"}</td>
                 <td class="num red"><b>${fmtVND(s.unpaid)}</b></td><td>${st}</td>
@@ -281,7 +388,7 @@ function renderCustomers(c){
                 </td>
               </tr>
               <tr class="detail-row" style="display:${state.openCustomers.has(s.customer)?'table-row':'none'}">
-                <td colspan="8"><div class="detail-inner"><div class="tbl-scroll"><table>
+                <td colspan="10"><div class="detail-inner"><div class="tbl-scroll"><table>
                   <thead><tr><th>月份</th><th>发票号</th><th>日期</th><th class="num">货款</th><th class="num">税额</th><th class="num">含税总额</th><th class="num">实际收入</th><th class="num">手续费</th><th class="num">未收</th><th>状态</th><th>标记</th><th></th></tr></thead>
                   <tbody>
                     ${s.items.filter(i=>!state.hideSettled||invUnpaid(i)>0).map(i=>`<tr class="${i.mark?"mark-"+i.mark:""}">
@@ -302,7 +409,7 @@ function renderCustomers(c){
                   ${payHistoryHtml(s.customer)}</div></div></td>
               </tr>`;
             }).join("")}
-            <tr class="total-row"><td colspan="6">未收总计</td><td class="num red">${fmtVND(grand)}</td><td colspan="2"></td></tr>
+            <tr class="total-row"><td colspan="7">未收总计</td><td class="num red">${fmtVND(grand)}</td><td colspan="2"></td></tr>
           </tbody></table>`:`<div class="empty"><div class="e1">🏢</div>${state.hideSettled&&state.invoices.length?"当前发票均已清款，取消勾选“隐藏已清款”可查看全部":"当前区间内没有发票数据"}</div>`}
       </div></div>`;
   $("#hideSettledChk").checked=state.hideSettled;
@@ -312,6 +419,7 @@ function renderCustomers(c){
     render();
   };
   $("#custSearch").oninput=e=>{
+    state.custQ=e.target.value;
     const q=e.target.value.toLowerCase();
     document.querySelectorAll("#custBody .cust-row").forEach(tr=>{
       const hit=tr.dataset.name.toLowerCase().includes(q)||tr.dataset.code.toLowerCase().includes(q);
@@ -430,7 +538,7 @@ async function confirmQuickSettle(id){
   await dbPut("payments",{id:uid(),customer:i.customer,code:i.code,
     currency:cur,amount:v,date:todayStr(),fee,
     note:fee>0?"清款-银行手续费 "+(cur==="USD"?fmtUSD(fee):fmtVND(fee)):"清款",
-    allocations:[{invoiceId:i.id,amount:v,fee}]});
+    allocations:[{invoiceId:i.id,amount:v,fee:0}]});
   await dbPut("invoices",i);closeModal();await loadState();render();
 }
 
@@ -588,7 +696,7 @@ function renderImport(c){
     <div id="excelPane">
       <div class="drop" id="dropZone">
         <div class="big">📥</div><h3>点击选择 或 拖入月度对账单 Excel</h3>
-        <p>支持 .xlsx / .xls，数据保存在本机浏览器</p>
+        <p>支持 .xlsx / .xls，数据保存在云端，三端实时同步</p>
         <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
       </div><div class="wizard" id="wizard"></div>
     </div>
@@ -1192,7 +1300,7 @@ async function restoreData(file){
 /* ============ Excel 导出 ============ */
 function exportDashboard(){
   const rows=[],mStats=new Map();
-  state.invoices.forEach(i=>{
+  filteredInvoices().forEach(i=>{
     if(!mStats.has(i.month))mStats.set(i.month,{count:0,cust:new Set(),total:0,paid:0,fee:0,unpaid:0});
     const s=mStats.get(i.month);
     s.count++;s.cust.add(i.customer);s.total+=invTotal(i);s.paid+=invPaid(i);s.fee+=invFee(i);s.unpaid+=invUnpaid(i);
@@ -1209,12 +1317,12 @@ function exportDashboard(){
 function exportCustomers(){
   const list=filteredInvoices(),map=new Map();
   list.forEach(i=>{
-    if(!map.has(i.customer))map.set(i.customer,{code:i.code,customer:i.customer,total:0,paid:0,unpaid:0});
+    if(!map.has(i.customer))map.set(i.customer,{code:i.code,customer:i.customer,total:0,paid:0,unpaid:0,fee:0,count:0});
     const s=map.get(i.customer);
-    s.total+=invTotal(i);s.paid+=Math.min(invPaid(i),invTotal(i));s.unpaid+=invUnpaid(i);
+    s.total+=invTotal(i);s.paid+=Math.min(invPaid(i),invTotal(i));s.unpaid+=invUnpaid(i);s.fee+=invFee(i);s.count++;
   });
   const summary=[...map.values()].sort((a,b)=>b.unpaid-a.unpaid).map(s=>({
-    "客户代码":s.code,"客户名称":s.customer,"发票总额(VND)":Math.round(s.total),
+    "客户代码":s.code,"客户名称":s.customer,"发票数":s.count,"发票总额(VND)":Math.round(s.total),
     "实际收入(VND)":Math.round(s.paid),"手续费(VND)":Math.round(s.fee),
     "未收余额(VND)":Math.round(s.unpaid)}));
   const detail=list.map(i=>({"月份":monthLabel(i.month),"客户代码":i.code,"客户名称":i.customer,
@@ -1255,18 +1363,32 @@ function scheduleRender(){
   clearTimeout(renderTimer);
   renderTimer=setTimeout(async()=>{await loadState();render();},120);
 }
+function refreshSideAccount(){
+  const el=$("#sideAccount");
+  if(el)el.textContent=Cloud.user?Cloud.user.email:"";
+}
 document.addEventListener("auth-changed",async e=>{
   if(e.detail.user){
     $("#loginMask").style.display="none";
-    if(!window._dataBound){window._dataBound=true;Cloud.onData(scheduleRender);}
+    refreshSideAccount();
+    if(!window._dataBound){
+      window._dataBound=true;
+      Cloud.onData(scheduleRender);
+      Cloud.onStatus(updateSyncChip);
+    }
   }else{
     $("#loginMask").style.display="flex";
     $("#loginPassword").value="";
+    refreshSideAccount();
   }
 });
 (async function init(){
   while(!window.Cloud) await new Promise(r=>setTimeout(r,50));
+  $("#statusFilter").value=state.statusFilter;
+  $("#currencyFilter").value=state.currencyFilter;
   await openDB();
+  Cloud.onStatus(updateSyncChip);
   if(Cloud.user){await loadState();}
+  refreshSideAccount();
   render();
 })();
