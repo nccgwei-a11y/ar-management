@@ -96,10 +96,10 @@ async function loadState(){
 }
 function expenseOf(month){return parseAmount(state.expenses[month]);}
 function hasExpense(month){return Object.prototype.hasOwnProperty.call(state.expenses,month);}
-function monthActualIncome(month){
-  return state.invoices.filter(i=>i.month===month).reduce((s,i)=>s+invPaid(i),0);
+function monthInvoiceTotal(month){
+  return state.invoices.filter(i=>i.month===month).reduce((s,i)=>s+invTotal(i),0);
 }
-function monthProfit(month){return monthActualIncome(month)-expenseOf(month);}
+function monthProfit(month){return monthInvoiceTotal(month)-expenseOf(month);}
 function invTotal(i){return i.currency==="USD"?i.total*state.fxUSD:i.total;}
 function invPaid(i){return i.currency==="USD"?(i.paidAmount||0)*state.fxUSD:(i.paidAmount||0);}
 function invFee(i){return i.currency==="USD"?(i.fee||0)*state.fxUSD:(i.fee||0);}
@@ -316,7 +316,7 @@ function renderDashboard(c){
       <div class="kpi"><div class="label">实际货款收入</div><div class="num green">${fmtVND(paidAll)}</div><div class="hint">发票总额 ${fmtVND(totalAll)} · 手续费 ${fmtVND(feeAll)}</div></div>
       <div class="kpi"><div class="label">未收客户数</div><div class="num purple">${custSet.size}</div><div class="hint">共 ${list.length} 张发票</div></div>
       <div class="kpi"><div class="label">最新月份未收（${latest?monthLabel(latest):"—"}）</div><div class="num green">${fmtVND(latestUnpaid)}</div><div class="hint">点击下方月份查看明细</div></div>
-      <div class="kpi"><div class="label">最新月份利润（${latest?monthLabel(latest):"—"}）</div><div class="num ${latestProfit!==null&&latestProfit<0?"red":"blue"}">${latestProfit===null?"待填支出":fmtVND(latestProfit)}</div><div class="hint">实际收入 − 支出总金额</div></div>
+      <div class="kpi"><div class="label">最新月份利润（${latest?monthLabel(latest):"—"}）</div><div class="num ${latestProfit!==null&&latestProfit<0?"red":"blue"}">${latestProfit===null?"待填支出":fmtVND(latestProfit)}</div><div class="hint">发票总金额 − 支出总金额</div></div>
     </div>
     <div class="panel">
       <div class="ph"><h3>月度汇总</h3><span class="result-count">${state.invoices.length} 张发票</span><div class="spacer"></div><button class="btn sm" onclick="exportDashboard()">导出 Excel</button></div>
@@ -329,7 +329,7 @@ function renderDashboard(c){
               <td class="num">${fmtVND(s.total)}</td><td class="num green">${fmtVND(s.paid)}</td>
               <td class="num amber">${s.fee?fmtVND(s.fee):"0"}</td>
               <td class="num amber">${hasExpense(m)?fmtVND(s.expense):"—"}</td>
-              <td class="num ${s.paid-s.expense>=0?"green":"red"}"><b>${hasExpense(m)?fmtVND(s.paid-s.expense):"—"}</b></td>
+              <td class="num ${s.total-s.expense>=0?"green":"red"}"><b>${hasExpense(m)?fmtVND(s.total-s.expense):"—"}</b></td>
               <td class="num red">${fmtVND(s.unpaid)}</td>
               <td style="white-space:normal"><button class="btn sm" onclick="openMonthPreview('${m}')">预览对账单</button>
               <button class="btn sm" onclick="jumpMonth('${m}')">查看客户</button>
@@ -340,7 +340,7 @@ function renderDashboard(c){
             <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invPaid(i),0))}</td>
             <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invFee(i),0))}</td>
             <td class="num">${fmtVND(Object.values(state.expenses).reduce((s,v)=>s+parseAmount(v),0))}</td>
-            <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invPaid(i),0)-Object.values(state.expenses).reduce((s,v)=>s+parseAmount(v),0))}</td>
+            <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invTotal(i),0)-Object.values(state.expenses).reduce((s,v)=>s+parseAmount(v),0))}</td>
             <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invUnpaid(i),0))}</td><td></td></tr>
           </tbody></table>`:`<div class="empty"><div class="e1">📄</div>还没有数据，请到「导入」拉入每月 Excel</div>`}
       </div></div>`;
@@ -722,16 +722,16 @@ function renderExpenses(c){
     .filter(Boolean).sort((a,b)=>b.localeCompare(a));
   const rows=months.map(m=>{
     const inv=state.invoices.filter(i=>i.month===m);
-    const income=inv.reduce((s,i)=>s+invPaid(i),0);
+    const invoiceTotal=inv.reduce((s,i)=>s+invTotal(i),0);
     const unpaid=inv.reduce((s,i)=>s+invUnpaid(i),0);
     const expense=expenseOf(m);
-    return {m,income,unpaid,expense,profit:income-expense,recorded:hasExpense(m)};
+    return {m,invoiceTotal,unpaid,expense,profit:invoiceTotal-expense,recorded:hasExpense(m)};
   });
-  const incomeAll=rows.reduce((s,r)=>s+r.income,0);
+  const invoiceTotalAll=rows.reduce((s,r)=>s+r.invoiceTotal,0);
   const expenseAll=rows.reduce((s,r)=>s+r.expense,0);
-  const profitAll=incomeAll-expenseAll;
+  const profitAll=invoiceTotalAll-expenseAll;
   c.innerHTML=`
-    <div class="note-line">每月只需填写一次支出总金额（VND），之后可直接修改。<b>当月利润 = 当月实际收入（含现金，USD 按当前汇率折算）− 当月支出总金额</b>；银行手续费不重复扣除。</div>
+    <div class="note-line">每月只需填写一次支出总金额（VND），之后可直接修改。<b>当月利润 = 当月发票总金额（含税，USD 按当前汇率折算）− 当月支出总金额</b>；未收货款不影响利润计算。</div>
     <div class="panel">
       <div class="ph"><h3>填写 / 修改月度支出</h3><span class="result-count">保存后三端自动同步</span></div>
       <div class="pb">
@@ -744,18 +744,18 @@ function renderExpenses(c){
       </div>
     </div>
     <div class="cards profit-cards">
-      <div class="kpi"><div class="label">累计实际收入</div><div class="num green">${fmtVND(incomeAll)}</div><div class="hint">下列月份合计 · VND</div></div>
+      <div class="kpi"><div class="label">累计发票总金额</div><div class="num green">${fmtVND(invoiceTotalAll)}</div><div class="hint">含税 · 下列月份合计 · VND</div></div>
       <div class="kpi"><div class="label">累计支出</div><div class="num amber">${fmtVND(expenseAll)}</div><div class="hint">已填写 ${rows.filter(r=>r.recorded).length} 个月</div></div>
-      <div class="kpi"><div class="label">累计利润</div><div class="num ${profitAll>=0?"blue":"red"}">${fmtVND(profitAll)}</div><div class="hint">实际收入 − 支出</div></div>
+      <div class="kpi"><div class="label">累计利润</div><div class="num ${profitAll>=0?"blue":"red"}">${fmtVND(profitAll)}</div><div class="hint">发票总金额 − 支出</div></div>
     </div>
     <div class="panel">
       <div class="ph"><h3>每月利润明细</h3><span class="result-count">${rows.length} 个月</span><div class="spacer"></div><button class="btn sm" onclick="exportExpenses()">导出利润表 Excel</button></div>
       <div class="tbl-scroll">
         ${rows.length?`<table>
-          <thead><tr><th>月份</th><th class="num">实际收入</th><th class="num">支出总金额</th><th class="num">当月利润</th><th class="num">未收货款</th><th>支出状态</th><th></th></tr></thead>
+          <thead><tr><th>月份</th><th class="num">发票总金额（含税）</th><th class="num">支出总金额</th><th class="num">当月利润</th><th class="num">未收货款</th><th>支出状态</th><th></th></tr></thead>
           <tbody>${rows.map(r=>`<tr>
             <td><b>${monthLabel(r.m)}</b></td>
-            <td class="num green">${fmtVND(r.income)}</td>
+            <td class="num green">${fmtVND(r.invoiceTotal)}</td>
             <td class="num amber">${r.recorded?fmtVND(r.expense):"—"}</td>
             <td class="num ${r.profit>=0?"green":"red"}"><b>${r.recorded?fmtVND(r.profit):"—"}</b></td>
             <td class="num red">${fmtVND(r.unpaid)}</td>
@@ -763,7 +763,7 @@ function renderExpenses(c){
             <td style="white-space:normal"><button class="btn sm primary" onclick="openExpenseMonth('${r.m}')">${r.recorded?"修改支出":"填写支出"}</button>
               <button class="btn sm" onclick="openMonthPreview('${r.m}')">查看收入明细</button></td>
           </tr>`).join("")}
-          <tr class="total-row"><td>合计</td><td class="num">${fmtVND(incomeAll)}</td><td class="num">${fmtVND(expenseAll)}</td><td class="num ${profitAll>=0?"green":"red"}">${fmtVND(profitAll)}</td><td class="num">${fmtVND(rows.reduce((s,r)=>s+r.unpaid,0))}</td><td colspan="2"></td></tr>
+          <tr class="total-row"><td>合计</td><td class="num">${fmtVND(invoiceTotalAll)}</td><td class="num">${fmtVND(expenseAll)}</td><td class="num ${profitAll>=0?"green":"red"}">${fmtVND(profitAll)}</td><td class="num">${fmtVND(rows.reduce((s,r)=>s+r.unpaid,0))}</td><td colspan="2"></td></tr>
           </tbody></table>`:`<div class="empty"><div class="e1">💰</div>还没有月度数据，请先在上方选择月份并填写支出</div>`}
       </div></div>`;
   $("#expMonth").onchange=e=>{state.expenseMonth=e.target.value;render();};
@@ -791,11 +791,11 @@ function exportExpenses(){
     .filter(Boolean).sort((a,b)=>a.localeCompare(b));
   const rows=months.map(m=>{
     const inv=state.invoices.filter(i=>i.month===m);
-    const income=inv.reduce((s,i)=>s+invPaid(i),0);
+    const invoiceTotal=inv.reduce((s,i)=>s+invTotal(i),0);
     const expense=expenseOf(m);
-    return {"月份":monthLabel(m),"实际收入(VND)":Math.round(income),
+    return {"月份":monthLabel(m),"发票总金额(VND)":Math.round(invoiceTotal),
       "支出总金额(VND)":hasExpense(m)?Math.round(expense):"",
-      "当月利润(VND)":hasExpense(m)?Math.round(income-expense):"",
+      "当月利润(VND)":hasExpense(m)?Math.round(invoiceTotal-expense):"",
       "未收货款(VND)":Math.round(inv.reduce((s,i)=>s+invUnpaid(i),0)),
       "支出状态":hasExpense(m)?"已填写":"待填写"};
   });
@@ -1432,7 +1432,7 @@ function exportDashboard(){
     rows.push({"月份":monthLabel(m),"发票数":s.count,"客户数":s.cust.size,
       "发票总额(VND)":Math.round(s.total),"实际收入(VND)":Math.round(s.paid),
       "手续费(VND)":Math.round(s.fee),"支出总金额(VND)":hasExpense(m)?Math.round(s.expense):"",
-      "当月利润(VND)":hasExpense(m)?Math.round(s.paid-s.expense):"","未收(VND)":Math.round(s.unpaid)});
+      "当月利润(VND)":hasExpense(m)?Math.round(s.total-s.expense):"","未收(VND)":Math.round(s.unpaid)});
   });
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),"月度汇总");
