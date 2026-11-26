@@ -1,6 +1,6 @@
 {
   "name": "ar-management",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "越南協發有限公司财务管理 - 电脑/手机/网页一体版",
   "main": "electron/main.cjs",
   "author": "factory",

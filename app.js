@@ -73,7 +73,7 @@ function kvSet(key,value){return Cloud.upsert("kv",{key,value});}
 function readJSON(key,def){
   try{const v=localStorage.getItem(key);return v?JSON.parse(v):def;}catch(e){return def;}
 }
-const state={batches:[],invoices:[],payments:[],view:"dashboard",filter:{start:"",end:""},fxUSD:25000,wizard:null,openCustomers:new Set(),
+const state={batches:[],invoices:[],payments:[],expenses:{},view:"dashboard",filter:{start:"",end:""},fxUSD:25000,wizard:null,openCustomers:new Set(),
   hideSettled:localStorage.getItem("ar_hide_settled")!=="0",
   monthSort:localStorage.getItem("ar_month_sort")==="desc"?"desc":"asc",
   statusFilter:localStorage.getItem("ar_status_filter")||"all",
@@ -87,7 +87,19 @@ async function loadState(){
   state.invoices=Cloud.data.invoices.slice();
   state.payments=Cloud.data.payments.slice();
   state.fxUSD=await kvGet("fxUSD",25000);
+  state.expenses={};
+  Cloud.data.kv.forEach(row=>{
+    if(row.key&&row.key.startsWith("expense_")){
+      state.expenses[row.key.slice(8)]=parseAmount(row.value);
+    }
+  });
 }
+function expenseOf(month){return parseAmount(state.expenses[month]);}
+function hasExpense(month){return Object.prototype.hasOwnProperty.call(state.expenses,month);}
+function monthActualIncome(month){
+  return state.invoices.filter(i=>i.month===month).reduce((s,i)=>s+invPaid(i),0);
+}
+function monthProfit(month){return monthActualIncome(month)-expenseOf(month);}
 function invTotal(i){return i.currency==="USD"?i.total*state.fxUSD:i.total;}
 function invPaid(i){return i.currency==="USD"?(i.paidAmount||0)*state.fxUSD:(i.paidAmount||0);}
 function invFee(i){return i.currency==="USD"?(i.fee||0)*state.fxUSD:(i.fee||0);}
@@ -192,12 +204,13 @@ $("#resetFilter").onclick=()=>{
 };
 
 function render(){
-  const titles={dashboard:"总览看板",customers:"客户欠款",import:"导入对账单",data:"数据管理",
+  const titles={dashboard:"总览看板",customers:"客户欠款",expenses:"月度支出与利润",import:"导入对账单",data:"数据管理",
     preview:state.previewMonth?"对账单预览 · "+monthLabel(state.previewMonth):"对账单预览"};
   $("#viewTitle").textContent=titles[state.view];
   const c=$("#content");
   if(state.view==="dashboard") renderDashboard(c);
   else if(state.view==="customers") renderCustomers(c);
+  else if(state.view==="expenses") renderExpenses(c);
   else if(state.view==="import") renderImport(c);
   else if(state.view==="preview") renderMonthPreview(c);
   else renderData(c);
@@ -282,14 +295,19 @@ function renderDashboard(c){
   const feeAll=list.reduce((s,i)=>s+invFee(i),0);
   const unpaidAll=list.reduce((s,i)=>s+invUnpaid(i),0);
   const custSet=new Set(list.map(i=>i.customer));
-  const months=[...new Set(state.invoices.map(i=>i.month))].sort();
+  const months=[...new Set([...state.invoices.map(i=>i.month),...Object.keys(state.expenses)])].filter(Boolean).sort();
   const latest=months.length?months[months.length-1]:"";
   const latestUnpaid=state.invoices.filter(i=>i.month===latest).reduce((s,i)=>s+invUnpaid(i),0);
+  const latestProfit=latest&&hasExpense(latest)?monthProfit(latest):null;
   const mStats=new Map();
   state.invoices.forEach(i=>{
-    if(!mStats.has(i.month))mStats.set(i.month,{count:0,cust:new Set(),total:0,paid:0,fee:0,unpaid:0});
+    if(!mStats.has(i.month))mStats.set(i.month,{count:0,cust:new Set(),total:0,paid:0,fee:0,unpaid:0,expense:0});
     const s=mStats.get(i.month);
     s.count++;s.cust.add(i.customer);s.total+=invTotal(i);s.paid+=invPaid(i);s.fee+=invFee(i);s.unpaid+=invUnpaid(i);
+  });
+  Object.keys(state.expenses).forEach(m=>{
+    if(!mStats.has(m))mStats.set(m,{count:0,cust:new Set(),total:0,paid:0,fee:0,unpaid:0,expense:0});
+    mStats.get(m).expense=expenseOf(m);
   });
   const mRows=[...mStats.entries()].sort((a,b)=>state.monthSort==="desc"?b[0].localeCompare(a[0]):a[0].localeCompare(b[0]));
   c.innerHTML=`
@@ -298,25 +316,31 @@ function renderDashboard(c){
       <div class="kpi"><div class="label">实际货款收入</div><div class="num green">${fmtVND(paidAll)}</div><div class="hint">发票总额 ${fmtVND(totalAll)} · 手续费 ${fmtVND(feeAll)}</div></div>
       <div class="kpi"><div class="label">未收客户数</div><div class="num purple">${custSet.size}</div><div class="hint">共 ${list.length} 张发票</div></div>
       <div class="kpi"><div class="label">最新月份未收（${latest?monthLabel(latest):"—"}）</div><div class="num green">${fmtVND(latestUnpaid)}</div><div class="hint">点击下方月份查看明细</div></div>
+      <div class="kpi"><div class="label">最新月份利润（${latest?monthLabel(latest):"—"}）</div><div class="num ${latestProfit!==null&&latestProfit<0?"red":"blue"}">${latestProfit===null?"待填支出":fmtVND(latestProfit)}</div><div class="hint">实际收入 − 支出总金额</div></div>
     </div>
     <div class="panel">
       <div class="ph"><h3>月度汇总</h3><span class="result-count">${state.invoices.length} 张发票</span><div class="spacer"></div><button class="btn sm" onclick="exportDashboard()">导出 Excel</button></div>
       <div class="tbl-scroll">
         ${mRows.length?`<table>
-          <thead><tr><th class="sortable" onclick="toggleMonthSort()">月份 ${state.monthSort==="desc"?"▼":"▲"}</th><th class="num">发票数</th><th class="num">客户数</th><th class="num">发票总额</th><th class="num">实际收入</th><th class="num">手续费</th><th class="num">未收</th><th></th></tr></thead>
+          <thead><tr><th class="sortable" onclick="toggleMonthSort()">月份 ${state.monthSort==="desc"?"▼":"▲"}</th><th class="num">发票数</th><th class="num">客户数</th><th class="num">发票总额</th><th class="num">实际收入</th><th class="num">手续费</th><th class="num">支出</th><th class="num">利润</th><th class="num">未收</th><th></th></tr></thead>
           <tbody>
             ${mRows.map(([m,s])=>`<tr>
               <td><b>${monthLabel(m)}</b></td><td class="num">${s.count}</td><td class="num">${s.cust.size}</td>
               <td class="num">${fmtVND(s.total)}</td><td class="num green">${fmtVND(s.paid)}</td>
               <td class="num amber">${s.fee?fmtVND(s.fee):"0"}</td>
+              <td class="num amber">${hasExpense(m)?fmtVND(s.expense):"—"}</td>
+              <td class="num ${s.paid-s.expense>=0?"green":"red"}"><b>${hasExpense(m)?fmtVND(s.paid-s.expense):"—"}</b></td>
               <td class="num red">${fmtVND(s.unpaid)}</td>
               <td style="white-space:normal"><button class="btn sm" onclick="openMonthPreview('${m}')">预览对账单</button>
-              <button class="btn sm" onclick="jumpMonth('${m}')">查看客户</button></td></tr>`).join("")}
+              <button class="btn sm" onclick="jumpMonth('${m}')">查看客户</button>
+              <button class="btn sm primary" onclick="openExpenseMonth('${m}')">${hasExpense(m)?"修改支出":"填写支出"}</button></td></tr>`).join("")}
             <tr class="total-row"><td>合计</td><td class="num">${state.invoices.length}</td>
             <td class="num">${new Set(state.invoices.map(i=>i.customer)).size}</td>
             <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invTotal(i),0))}</td>
             <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invPaid(i),0))}</td>
             <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invFee(i),0))}</td>
+            <td class="num">${fmtVND(Object.values(state.expenses).reduce((s,v)=>s+parseAmount(v),0))}</td>
+            <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invPaid(i),0)-Object.values(state.expenses).reduce((s,v)=>s+parseAmount(v),0))}</td>
             <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invUnpaid(i),0))}</td><td></td></tr>
           </tbody></table>`:`<div class="empty"><div class="e1">📄</div>还没有数据，请到「导入」拉入每月 Excel</div>`}
       </div></div>`;
@@ -684,6 +708,100 @@ async function settleCustomer(name){
   const ids=filteredInvoices().filter(i=>i.customer===name&&invUnpaid(i)>0);
   for(const i of ids){i.paidAmount=i.total;i.paidAt=todayStr();await dbPut("invoices",i);}
   render();
+}
+
+/* ============ 月度支出与利润 ============ */
+function openExpenseMonth(month){
+  state.expenseMonth=month;
+  document.querySelector('[data-view="expenses"]').click();
+}
+function renderExpenses(c){
+  if(!state.expenseMonth)state.expenseMonth=todayStr().slice(0,7);
+  const selected=state.expenseMonth;
+  const months=[...new Set([...state.invoices.map(i=>i.month),...Object.keys(state.expenses)])]
+    .filter(Boolean).sort((a,b)=>b.localeCompare(a));
+  const rows=months.map(m=>{
+    const inv=state.invoices.filter(i=>i.month===m);
+    const income=inv.reduce((s,i)=>s+invPaid(i),0);
+    const unpaid=inv.reduce((s,i)=>s+invUnpaid(i),0);
+    const expense=expenseOf(m);
+    return {m,income,unpaid,expense,profit:income-expense,recorded:hasExpense(m)};
+  });
+  const incomeAll=rows.reduce((s,r)=>s+r.income,0);
+  const expenseAll=rows.reduce((s,r)=>s+r.expense,0);
+  const profitAll=incomeAll-expenseAll;
+  c.innerHTML=`
+    <div class="note-line">每月只需填写一次支出总金额（VND），之后可直接修改。<b>当月利润 = 当月实际收入（含现金，USD 按当前汇率折算）− 当月支出总金额</b>；银行手续费不重复扣除。</div>
+    <div class="panel">
+      <div class="ph"><h3>填写 / 修改月度支出</h3><span class="result-count">保存后三端自动同步</span></div>
+      <div class="pb">
+        <div class="row2" style="margin-bottom:0">
+          <div class="field"><label>支出月份 *</label><input type="month" id="expMonth" value="${esc(selected)}"></div>
+          <div class="field"><label>当月支出总金额（VND）*</label><input type="number" id="expAmount" min="0" step="1" inputmode="numeric" placeholder="例如：150000000" value="${hasExpense(selected)?expenseOf(selected):""}"></div>
+          <button class="btn primary" onclick="saveExpense()">保存支出</button>
+          ${hasExpense(selected)?`<button class="btn danger" onclick="deleteExpense('${selected}')">清除该月支出</button>`:""}
+        </div>
+      </div>
+    </div>
+    <div class="cards profit-cards">
+      <div class="kpi"><div class="label">累计实际收入</div><div class="num green">${fmtVND(incomeAll)}</div><div class="hint">下列月份合计 · VND</div></div>
+      <div class="kpi"><div class="label">累计支出</div><div class="num amber">${fmtVND(expenseAll)}</div><div class="hint">已填写 ${rows.filter(r=>r.recorded).length} 个月</div></div>
+      <div class="kpi"><div class="label">累计利润</div><div class="num ${profitAll>=0?"blue":"red"}">${fmtVND(profitAll)}</div><div class="hint">实际收入 − 支出</div></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h3>每月利润明细</h3><span class="result-count">${rows.length} 个月</span><div class="spacer"></div><button class="btn sm" onclick="exportExpenses()">导出利润表 Excel</button></div>
+      <div class="tbl-scroll">
+        ${rows.length?`<table>
+          <thead><tr><th>月份</th><th class="num">实际收入</th><th class="num">支出总金额</th><th class="num">当月利润</th><th class="num">未收货款</th><th>支出状态</th><th></th></tr></thead>
+          <tbody>${rows.map(r=>`<tr>
+            <td><b>${monthLabel(r.m)}</b></td>
+            <td class="num green">${fmtVND(r.income)}</td>
+            <td class="num amber">${r.recorded?fmtVND(r.expense):"—"}</td>
+            <td class="num ${r.profit>=0?"green":"red"}"><b>${r.recorded?fmtVND(r.profit):"—"}</b></td>
+            <td class="num red">${fmtVND(r.unpaid)}</td>
+            <td>${r.recorded?'<span class="tag paid">已填写</span>':'<span class="tag unpaid">待填写</span>'}</td>
+            <td style="white-space:normal"><button class="btn sm primary" onclick="openExpenseMonth('${r.m}')">${r.recorded?"修改支出":"填写支出"}</button>
+              <button class="btn sm" onclick="openMonthPreview('${r.m}')">查看收入明细</button></td>
+          </tr>`).join("")}
+          <tr class="total-row"><td>合计</td><td class="num">${fmtVND(incomeAll)}</td><td class="num">${fmtVND(expenseAll)}</td><td class="num ${profitAll>=0?"green":"red"}">${fmtVND(profitAll)}</td><td class="num">${fmtVND(rows.reduce((s,r)=>s+r.unpaid,0))}</td><td colspan="2"></td></tr>
+          </tbody></table>`:`<div class="empty"><div class="e1">💰</div>还没有月度数据，请先在上方选择月份并填写支出</div>`}
+      </div></div>`;
+  $("#expMonth").onchange=e=>{state.expenseMonth=e.target.value;render();};
+}
+async function saveExpense(){
+  const month=$("#expMonth").value;
+  const raw=$("#expAmount").value.trim();
+  if(!month){alert("请选择支出月份");return;}
+  if(raw===""){alert("请输入当月支出总金额；没有支出可填写 0");return;}
+  const amount=parseAmount(raw);
+  if(amount<0){alert("支出总金额不能小于 0");return;}
+  state.expenseMonth=month;
+  await kvSet("expense_"+month,amount);
+  state.expenses[month]=amount;
+  await loadState();render();
+}
+async function deleteExpense(month){
+  if(!await confirmDelete("确认清除 "+monthLabel(month)+" 的支出记录？利润将重新计算。"))return;
+  await dbDel("kv","expense_"+month);
+  delete state.expenses[month];
+  await loadState();render();
+}
+function exportExpenses(){
+  const months=[...new Set([...state.invoices.map(i=>i.month),...Object.keys(state.expenses)])]
+    .filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  const rows=months.map(m=>{
+    const inv=state.invoices.filter(i=>i.month===m);
+    const income=inv.reduce((s,i)=>s+invPaid(i),0);
+    const expense=expenseOf(m);
+    return {"月份":monthLabel(m),"实际收入(VND)":Math.round(income),
+      "支出总金额(VND)":hasExpense(m)?Math.round(expense):"",
+      "当月利润(VND)":hasExpense(m)?Math.round(income-expense):"",
+      "未收货款(VND)":Math.round(inv.reduce((s,i)=>s+invUnpaid(i),0)),
+      "支出状态":hasExpense(m)?"已填写":"待填写"};
+  });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),"月度支出与利润");
+  XLSX.writeFile(wb,"月度支出与利润_"+todayStr()+".xlsx");
 }
 
 /* ============ 导入 ============ */
@@ -1279,8 +1397,8 @@ async function saveFx(){
   state.fxUSD=v;await kvSet("fxUSD",v);alert("已保存");render();
 }
 function backupData(){
-  const data={version:2,exportedAt:new Date().toISOString(),fxUSD:state.fxUSD,
-    batches:state.batches,invoices:state.invoices,payments:state.payments};
+  const data={version:3,exportedAt:new Date().toISOString(),fxUSD:state.fxUSD,
+    batches:state.batches,invoices:state.invoices,payments:state.payments,expenses:state.expenses};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);a.download="未收货款备份_"+todayStr()+".json";a.click();
@@ -1293,6 +1411,7 @@ async function restoreData(file){
   for(const b of d.batches)await dbPut("batches",b);
   for(const i of d.invoices)await dbPut("invoices",i);
   for(const p of d.payments||[])await dbPut("payments",p);
+  for(const [month,amount] of Object.entries(d.expenses||{}))await kvSet("expense_"+month,parseAmount(amount));
   if(d.fxUSD)state.fxUSD=d.fxUSD;
   await loadState();render();alert("恢复完成");
 }
@@ -1300,15 +1419,20 @@ async function restoreData(file){
 /* ============ Excel 导出 ============ */
 function exportDashboard(){
   const rows=[],mStats=new Map();
-  filteredInvoices().forEach(i=>{
-    if(!mStats.has(i.month))mStats.set(i.month,{count:0,cust:new Set(),total:0,paid:0,fee:0,unpaid:0});
+  state.invoices.forEach(i=>{
+    if(!mStats.has(i.month))mStats.set(i.month,{count:0,cust:new Set(),total:0,paid:0,fee:0,unpaid:0,expense:0});
     const s=mStats.get(i.month);
     s.count++;s.cust.add(i.customer);s.total+=invTotal(i);s.paid+=invPaid(i);s.fee+=invFee(i);s.unpaid+=invUnpaid(i);
+  });
+  Object.keys(state.expenses).forEach(m=>{
+    if(!mStats.has(m))mStats.set(m,{count:0,cust:new Set(),total:0,paid:0,fee:0,unpaid:0,expense:0});
+    mStats.get(m).expense=expenseOf(m);
   });
   [...mStats.entries()].sort((a,b)=>state.monthSort==="desc"?b[0].localeCompare(a[0]):a[0].localeCompare(b[0])).forEach(([m,s])=>{
     rows.push({"月份":monthLabel(m),"发票数":s.count,"客户数":s.cust.size,
       "发票总额(VND)":Math.round(s.total),"实际收入(VND)":Math.round(s.paid),
-      "手续费(VND)":Math.round(s.fee),"未收(VND)":Math.round(s.unpaid)});
+      "手续费(VND)":Math.round(s.fee),"支出总金额(VND)":hasExpense(m)?Math.round(s.expense):"",
+      "当月利润(VND)":hasExpense(m)?Math.round(s.paid-s.expense):"","未收(VND)":Math.round(s.unpaid)});
   });
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),"月度汇总");

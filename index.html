@@ -80,7 +80,8 @@ th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
 th.sortable:hover{color:var(--blue)}
 
 /* ===== 卡片与面板 ===== */
-.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+.cards{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:20px}
+.profit-cards{grid-template-columns:repeat(3,1fr)}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow-sm)}
 .kpi .label{color:var(--sub);font-size:13px;margin-bottom:10px}
 .kpi .num{font-size:24px;font-weight:700;word-break:break-all}
@@ -181,6 +182,7 @@ tr.open .caret{transform:rotate(90deg)}
   .topbar h2{font-size:15px}
   .content{padding:14px 12px}
   .cards{grid-template-columns:repeat(2,1fr);gap:10px}
+  .profit-cards{grid-template-columns:1fr}
   .kpi{padding:14px 15px}
   .kpi .num{font-size:19px}
   .panel .pb{padding:12px}
@@ -207,10 +209,11 @@ tr.open .caret{transform:rotate(90deg)}
     <nav class="nav">
       <button data-view="dashboard" class="active">📊 总览</button>
       <button data-view="customers">🏢 客户</button>
+      <button data-view="expenses">💰 支出/利润</button>
       <button data-view="import">📥 导入</button>
       <button data-view="data">⚙️ 管理</button>
     </nav>
-    <div class="foot">v5.0 · 云端实时同步 · 离线可用<span class="acc" id="sideAccount"></span></div>
+    <div class="foot">v5.1 · 云端实时同步 · 离线可用<span class="acc" id="sideAccount"></span></div>
   </aside>
   <div class="main">
     <div class="topbar">
