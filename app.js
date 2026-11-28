@@ -81,7 +81,8 @@ const state={batches:[],invoices:[],payments:[],expenses:{},view:"dashboard",fil
   q:"",custQ:"",
   custSort:readJSON("ar_cust_sort",{key:"unpaid",dir:"desc"}),
   invSort:readJSON("ar_inv_sort",{key:"month",dir:"asc"}),
-  importTab:"excel",manualRows:null,manualMonth:""};
+  importTab:"excel",manualRows:null,manualMonth:"",
+  receiptMonth:"",receiptIncludeAuto:localStorage.getItem("ar_receipt_auto")==="1"};
 async function loadState(){
   state.batches=Cloud.data.batches.slice();
   state.invoices=Cloud.data.invoices.slice();
@@ -204,13 +205,14 @@ $("#resetFilter").onclick=()=>{
 };
 
 function render(){
-  const titles={dashboard:"总览看板",customers:"客户欠款",expenses:"月度支出与利润",import:"导入对账单",data:"数据管理",
+  const titles={dashboard:"总览看板",customers:"客户欠款",expenses:"月度支出与利润",receipts:"收款记录 · 按收款日期",import:"导入对账单",data:"数据管理",
     preview:state.previewMonth?"对账单预览 · "+monthLabel(state.previewMonth):"对账单预览"};
   $("#viewTitle").textContent=titles[state.view];
   const c=$("#content");
   if(state.view==="dashboard") renderDashboard(c);
   else if(state.view==="customers") renderCustomers(c);
   else if(state.view==="expenses") renderExpenses(c);
+  else if(state.view==="receipts") renderReceipts(c);
   else if(state.view==="import") renderImport(c);
   else if(state.view==="preview") renderMonthPreview(c);
   else renderData(c);
@@ -241,12 +243,12 @@ function renderMonthPreview(c){
     </div>
     <div class="muted" style="margin-bottom:10px;font-size:12.5px">行颜色标记：点击每行右侧色点标记（红/黄/蓝/绿），再点一次同色或 × 清除，标记自动保存；点击表头可排序。</div>
     <div class="panel">
-      <div class="tbl-scroll">
+      <div class="tbl-scroll sr">
         ${list.length?`<table>
           <thead><tr>
             <th>STT</th><th>客户代码</th><th class="sortable" onclick="toggleInvSort('date')">开票日期${sortArrow('date')}</th><th class="sortable" onclick="toggleInvSort('invoiceNo')">发票号${sortArrow('invoiceNo')}</th><th>公司名称</th><th>税号</th>
             <th>地址</th><th class="num">货款</th><th class="num">增值税</th><th class="num sortable" onclick="toggleInvSort('total')">含税总额${sortArrow('total')}</th>
-            <th class="num sortable" onclick="toggleInvSort('paid')">实际收入${sortArrow('paid')}</th><th class="num sortable" onclick="toggleInvSort('fee')">手续费${sortArrow('fee')}</th><th class="num sortable" onclick="toggleInvSort('unpaid')">未收${sortArrow('unpaid')}</th><th>状态</th><th>标记</th>
+            <th class="num sortable" onclick="toggleInvSort('paid')">实际收入${sortArrow('paid')}</th><th class="num sortable" onclick="toggleInvSort('fee')">手续费${sortArrow('fee')}</th><th class="num sortable" onclick="toggleInvSort('unpaid')">未收${sortArrow('unpaid')}</th><th class="sr-col sr-stat">状态</th><th class="sr-col sr-mark">标记</th>
           </tr></thead>
           <tbody>
             ${list.map((i,k)=>`<tr class="${i.mark?"mark-"+i.mark:""}">
@@ -258,12 +260,12 @@ function renderMonthPreview(c){
               <td class="num green">${i.currency==="USD"?fmtUSD(i.paidAmount||0):fmtVND(i.paidAmount||0)}</td>
               <td class="num amber">${i.fee?(i.currency==="USD"?fmtUSD(i.fee):fmtVND(i.fee)):"0"}</td>
               <td class="num red">${i.currency==="USD"?fmtUSD(Math.max(0,i.total-(i.paidAmount||0)-(i.fee||0))):fmtVND(invUnpaid(i))}</td>
-              <td>${i.cash?'<span class="tag" style="background:#fff7d6;color:#a16207">现金收入</span>':(invUnpaid(i)<=0?'<span class="tag paid">已清款</span>':((i.paidAmount||0)>0?'<span class="tag part">部分</span>':'<span class="tag unpaid">未收</span>'))}</td>
-              <td style="white-space:nowrap">${markDotsHtml(i)}</td>
+              <td class="sr-col sr-stat">${i.cash?'<span class="tag" style="background:#fff7d6;color:#a16207">现金收入</span>':(invUnpaid(i)<=0?'<span class="tag paid">已清款</span>':((i.paidAmount||0)>0?'<span class="tag part">部分</span>':'<span class="tag unpaid">未收</span>'))}</td>
+              <td class="sr-col sr-mark" style="white-space:nowrap">${markDotsHtml(i)}</td>
             </tr>`).join("")}
             <tr class="total-row"><td colspan="7">本月合计（VND 口径，外币已折算）</td>
               <td class="num">${fmtVND(gSum)}</td><td class="num">${fmtVND(tSum)}</td><td class="num">${fmtVND(totSum)}</td>
-              <td class="num">${fmtVND(paidSum)}</td><td class="num">${fmtVND(feeSum)}</td><td class="num red">${fmtVND(unpSum)}</td><td></td><td></td></tr>
+              <td class="num">${fmtVND(paidSum)}</td><td class="num">${fmtVND(feeSum)}</td><td class="num red">${fmtVND(unpSum)}</td><td class="sr-col sr-stat"></td><td class="sr-col sr-mark"></td></tr>
           </tbody></table>`:`<div class="empty">该月没有发票数据</div>`}
       </div></div>`;
 }
@@ -320,9 +322,9 @@ function renderDashboard(c){
     </div>
     <div class="panel">
       <div class="ph"><h3>月度汇总</h3><span class="result-count">${state.invoices.length} 张发票</span><div class="spacer"></div><button class="btn sm" onclick="exportDashboard()">导出 Excel</button></div>
-      <div class="tbl-scroll">
+      <div class="tbl-scroll sr">
         ${mRows.length?`<table>
-          <thead><tr><th class="sortable" onclick="toggleMonthSort()">月份 ${state.monthSort==="desc"?"▼":"▲"}</th><th class="num">发票数</th><th class="num">客户数</th><th class="num">发票总额</th><th class="num">实际收入</th><th class="num">手续费</th><th class="num">支出</th><th class="num">利润</th><th class="num">未收</th><th></th></tr></thead>
+          <thead><tr><th class="sortable" onclick="toggleMonthSort()">月份 ${state.monthSort==="desc"?"▼":"▲"}</th><th class="num">发票数</th><th class="num">客户数</th><th class="num">发票总额</th><th class="num">实际收入</th><th class="num">手续费</th><th class="num">支出</th><th class="num">利润</th><th class="num">未收</th><th class="sr-col sr-act"></th></tr></thead>
           <tbody>
             ${mRows.map(([m,s])=>`<tr>
               <td><b>${monthLabel(m)}</b></td><td class="num">${s.count}</td><td class="num">${s.cust.size}</td>
@@ -331,7 +333,7 @@ function renderDashboard(c){
               <td class="num amber">${hasExpense(m)?fmtVND(s.expense):"—"}</td>
               <td class="num ${s.total-s.expense>=0?"green":"red"}"><b>${hasExpense(m)?fmtVND(s.total-s.expense):"—"}</b></td>
               <td class="num red">${fmtVND(s.unpaid)}</td>
-              <td style="white-space:normal"><button class="btn sm" onclick="openMonthPreview('${m}')">预览对账单</button>
+              <td class="sr-col sr-act" style="white-space:nowrap"><button class="btn sm" onclick="openMonthPreview('${m}')">预览对账单</button>
               <button class="btn sm" onclick="jumpMonth('${m}')">查看客户</button>
               <button class="btn sm primary" onclick="openExpenseMonth('${m}')">${hasExpense(m)?"修改支出":"填写支出"}</button></td></tr>`).join("")}
             <tr class="total-row"><td>合计</td><td class="num">${state.invoices.length}</td>
@@ -341,7 +343,7 @@ function renderDashboard(c){
             <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invFee(i),0))}</td>
             <td class="num">${fmtVND(Object.values(state.expenses).reduce((s,v)=>s+parseAmount(v),0))}</td>
             <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invTotal(i),0)-Object.values(state.expenses).reduce((s,v)=>s+parseAmount(v),0))}</td>
-            <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invUnpaid(i),0))}</td><td></td></tr>
+            <td class="num">${fmtVND(state.invoices.reduce((s,i)=>s+invUnpaid(i),0))}</td><td class="sr-col sr-act"></td></tr>
           </tbody></table>`:`<div class="empty"><div class="e1">📄</div>还没有数据，请到「导入」拉入每月 Excel</div>`}
       </div></div>`;
 }
@@ -548,6 +550,8 @@ function quickSettleInvoice(id){
     <div class="mline"><span>未收余额</span><span class="red">${cur==="USD"?fmtUSD(remain):fmtVND(remain)} ${cur}</span></div>
     <label style="font-size:12px;color:var(--sub);display:block;margin-top:14px">实际到账金额（差额自动记为银行手续费）</label>
     <input id="qsInput" type="number" step="0.01" value="${cur==="USD"?remain.toFixed(2):Math.round(remain)}">
+    <label style="font-size:12px;color:var(--sub);display:block;margin-top:10px">收款日期</label>
+    <input id="qsDate" type="date" value="${todayStr()}">
     <div class="actions"><button class="btn" onclick="closeModal()">取消</button>
       <button class="btn primary" onclick="confirmQuickSettle('${id}')">确认清款</button></div>`);
 }
@@ -558,11 +562,12 @@ async function confirmQuickSettle(id){
   const remain=i.total-(i.paidAmount||0)-(i.fee||0);
   if(v<=0||v>remain+0.001){alert("金额需在 0 到 "+remain+" 之间");return;}
   const fee=remain-v;
-  i.fee=(i.fee||0)+fee;i.paidAmount=(i.paidAmount||0)+v;i.paidAt=todayStr();
+  const date=$("#qsDate").value||todayStr();
+  i.fee=(i.fee||0)+fee;i.paidAmount=(i.paidAmount||0)+v;i.paidAt=date;
   await dbPut("payments",{id:uid(),customer:i.customer,code:i.code,
-    currency:cur,amount:v,date:todayStr(),fee,
+    currency:cur,amount:v,date,fee,
     note:fee>0?"清款-银行手续费 "+(cur==="USD"?fmtUSD(fee):fmtVND(fee)):"清款",
-    allocations:[{invoiceId:i.id,amount:v,fee:0}]});
+    allocations:[{invoiceId:i.id,amount:v,fee}]});
   await dbPut("invoices",i);closeModal();await loadState();render();
 }
 
@@ -585,12 +590,15 @@ function quickSettleCustomer(name){
     <div class="mline"><span>未收余额</span><span class="red">${cur==="USD"?fmtUSD(remain):fmtVND(remain)} ${cur}</span></div>
     <label style="font-size:12px;color:var(--sub);display:block;margin-top:14px">实际到账总额（剩余差额自动记为银行手续费）</label>
     <input id="qscInput" type="number" step="0.01" value="${cur==="USD"?remain.toFixed(2):Math.round(remain)}">
+    <label style="font-size:12px;color:var(--sub);display:block;margin-top:10px">收款日期</label>
+    <input id="qscDate" type="date" value="${todayStr()}">
     <div class="actions"><button class="btn" onclick="closeModal()">取消</button>
       <button class="btn primary" onclick="confirmQuickSettleCustomer('${esc(name)}')">确认清款</button></div>`);
 }
 async function confirmQuickSettleCustomer(name){
   const cur=customerCurrency(name);
   const v=parseAmount($("#qscInput").value);
+  const date=$("#qscDate").value||todayStr();
   const invs=state.invoices.filter(i=>i.customer===name&&i.total-(i.paidAmount||0)-(i.fee||0)>0).sort(invOrder);
   const remainAll=invs.reduce((s,i)=>s+i.total-(i.paidAmount||0)-(i.fee||0),0);
   if(v<=0||v>remainAll+0.001){alert("金额需在 0 到 "+remainAll+" 之间");return;}
@@ -599,12 +607,12 @@ async function confirmQuickSettleCustomer(name){
     const i=invs[k],cap=i.total-(i.paidAmount||0)-(i.fee||0);
     const pay=Math.min(cap,left);let fee=0;
     if(k===invs.length-1){fee=cap-pay;i.fee=(i.fee||0)+fee;totalFee+=fee;}
-    i.paidAmount=(i.paidAmount||0)+pay;i.paidAt=todayStr();
+    i.paidAmount=(i.paidAmount||0)+pay;i.paidAt=date;
     allocations.push({invoiceId:i.id,amount:pay,fee});left-=pay;
     await dbPut("invoices",i);
   }
   await dbPut("payments",{id:uid(),customer:name,code:customerCode(name),
-    currency:cur,amount:v,date:todayStr(),fee:totalFee,
+    currency:cur,amount:v,date,fee:totalFee,
     note:"客户清款-手续费 "+(cur==="USD"?fmtUSD(totalFee):fmtVND(totalFee)),allocations});
   closeModal();await loadState();render();
 }
@@ -708,6 +716,198 @@ async function settleCustomer(name){
   const ids=filteredInvoices().filter(i=>i.customer===name&&invUnpaid(i)>0);
   for(const i of ids){i.paidAmount=i.total;i.paidAt=todayStr();await dbPut("invoices",i);}
   render();
+}
+
+/* ============ 收款记录：按「收款日期」统计每月实际回款 ============ */
+/* 导入 Excel / 现金录入时自动登记的已收款，日期是导入当天，不是真实收款日，默认不计入本页 */
+const AUTO_PAY_NOTES=["手工录入-现金","Excel现金收入-无发票","Excel黄色标记-已收款"];
+function isAutoPayment(p){
+  if(p.source==="manual")return false;
+  if(p.source==="import")return true;
+  return AUTO_PAY_NOTES.includes(p.note||"");
+}
+function payVND(p){return p.currency==="USD"?(p.amount||0)*state.fxUSD:(p.amount||0);}
+function payFeeVND(p){return p.currency==="USD"?(p.fee||0)*state.fxUSD:(p.fee||0);}
+function payAmtText(p,n){const v=n==null?p.amount:n;return p.currency==="USD"?fmtUSD(v)+" USD":fmtVND(v);}
+function payInvoiceNos(p){
+  const nos=(p.allocations||[]).map(a=>{
+    const i=state.invoices.find(x=>x.id===a.invoiceId);
+    return i?(i.invoiceNo||"（无发票号）"):"";
+  }).filter(Boolean);
+  return [...new Set(nos)];
+}
+function receiptPayments(){
+  return state.payments.filter(p=>p.date&&(state.receiptIncludeAuto||!isAutoPayment(p)));
+}
+function receiptMonthRows(){
+  const by={};
+  receiptPayments().forEach(p=>{
+    const m=p.date.slice(0,7);
+    const o=by[m]||(by[m]={m,count:0,cust:new Set(),vnd:0,usd:0,fee:0,total:0});
+    o.count++;o.cust.add(p.customer);
+    if(p.currency==="USD")o.usd+=p.amount||0;else o.vnd+=p.amount||0;
+    o.fee+=payFeeVND(p);o.total+=payVND(p);
+  });
+  return Object.values(by).sort((a,b)=>b.m.localeCompare(a.m));
+}
+function receiptDetail(month){
+  return receiptPayments().filter(p=>p.date.slice(0,7)===month)
+    .sort((a,b)=>a.date.localeCompare(b.date)||(a.customer||"").localeCompare(b.customer||""));
+}
+function renderReceipts(c){
+  if(!state.receiptMonth)state.receiptMonth=todayStr().slice(0,7);
+  const sel=state.receiptMonth;
+  const rows=receiptMonthRows();
+  const cur=rows.find(r=>r.m===sel)||{m:sel,count:0,cust:new Set(),vnd:0,usd:0,fee:0,total:0};
+  const detail=receiptDetail(sel);
+  const autoPays=state.payments.filter(isAutoPayment);
+  const autoVND=autoPays.reduce((s,p)=>s+payVND(p),0);
+  const allTotal=rows.reduce((s,r)=>s+r.total,0);
+  const allCount=rows.reduce((s,r)=>s+r.count,0);
+  const allFee=rows.reduce((s,r)=>s+r.fee,0);
+  const dTotal=detail.reduce((s,p)=>s+payVND(p),0);
+  const dFee=detail.reduce((s,p)=>s+payFeeVND(p),0);
+  c.innerHTML=`
+    <div class="note-line">本页按<b>收款日期</b>统计每月实际收到的货款，数据来自你手动登记的收款（金额 + 日期）。与「总览」里按<b>对账月份</b>统计的「实际收入」口径不同；USD 按当前汇率 ${fmtVND(state.fxUSD)} 折算成 VND。</div>
+    <div class="panel">
+      <div class="ph"><h3>登记 / 查看</h3><span class="result-count">收款日期落在哪个月，就计入哪个月</span></div>
+      <div class="pb">
+        <div class="row2" style="margin-bottom:0">
+          <div class="field"><label>查看月份</label><input type="month" id="rcMonth" value="${esc(sel)}"></div>
+          <button class="btn primary" onclick="openReceiptPicker()">＋ 登记收款</button>
+          <button class="btn" onclick="exportReceipts()">导出 Excel</button>
+        </div>
+        ${autoPays.length?`<label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--sub);cursor:pointer;margin-top:14px;line-height:1.5">
+          <input type="checkbox" id="rcAuto" ${state.receiptIncludeAuto?"checked":""} style="width:auto;min-width:0;margin-top:3px">
+          <span>同时显示导入时自动登记的已收款（共 ${autoPays.length} 笔，折合 ${fmtVND(autoVND)} VND）。这些款项没有手动填写收款日期，日期是导入当天；勾选后可在明细里用「改日期」补上真实收款日，补完才会正式计入。</span></label>`:""}
+      </div>
+    </div>
+    <div class="cards profit-cards">
+      <div class="kpi"><div class="label">${monthLabel(sel)} 收款总额</div><div class="num green">${fmtVND(cur.total)}</div>
+        <div class="hint">VND ${fmtVND(cur.vnd)}${cur.usd?" · USD "+fmtUSD(cur.usd):""}</div></div>
+      <div class="kpi"><div class="label">${monthLabel(sel)} 收款笔数</div><div class="num blue">${cur.count} 笔</div><div class="hint">涉及 ${cur.cust.size} 个客户</div></div>
+      <div class="kpi"><div class="label">${monthLabel(sel)} 银行手续费</div><div class="num amber">${fmtVND(cur.fee)}</div><div class="hint">登记收款时记入的手续费</div></div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h3>${monthLabel(sel)} 收款明细</h3><span class="result-count">${detail.length} 笔</span></div>
+      <div class="tbl-scroll sr">
+        ${detail.length?`<table>
+          <thead><tr><th>收款日期</th><th>客户</th><th>代码</th><th>发票号</th><th class="num">收款金额</th><th class="num">折合 VND</th><th class="num">手续费</th><th>备注</th><th class="sr-col sr-act"></th></tr></thead>
+          <tbody>${detail.map(p=>`<tr>
+            <td>${esc(p.date)}</td>
+            <td class="name"><b>${esc(p.customer)}</b></td>
+            <td class="muted">${esc(p.code)||"—"}</td>
+            <td style="white-space:normal">${esc(payInvoiceNos(p).join("、"))||"—"}</td>
+            <td class="num green"><b>${payAmtText(p)}</b></td>
+            <td class="num">${fmtVND(payVND(p))}</td>
+            <td class="num amber">${p.fee?payAmtText(p,p.fee):"0"}</td>
+            <td style="white-space:normal">${isAutoPayment(p)?'<span class="tag" style="background:#f1f5f9;color:#64748b">导入自动</span> ':""}${esc(p.note||"")}</td>
+            <td class="sr-col sr-act" style="white-space:nowrap"><button class="btn sm" onclick="editPaymentDate('${p.id}')">改日期</button>
+              <button class="btn sm danger" onclick="deletePayment('${p.id}')">撤销</button></td>
+          </tr>`).join("")}
+          <tr class="total-row"><td colspan="4">${monthLabel(sel)} 合计（VND 口径）</td><td class="num"></td><td class="num">${fmtVND(dTotal)}</td><td class="num">${fmtVND(dFee)}</td><td></td><td class="sr-col sr-act"></td></tr>
+          </tbody></table>`:`<div class="empty"><div class="e1">💵</div>${monthLabel(sel)} 还没有登记收款；点上方「＋ 登记收款」，手动填写金额和收款日期</div>`}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="ph"><h3>每月收款汇总</h3><span class="result-count">${rows.length} 个月</span></div>
+      <div class="tbl-scroll sr">
+        ${rows.length?`<table>
+          <thead><tr><th>收款月份</th><th class="num">笔数</th><th class="num">客户数</th><th class="num">VND 收款</th><th class="num">USD 收款</th><th class="num">折合 VND 合计</th><th class="num">手续费</th><th class="sr-col sr-act"></th></tr></thead>
+          <tbody>${rows.map(r=>`<tr class="${r.m===sel?"sheet-pick active":""}">
+            <td><b>${monthLabel(r.m)}</b></td><td class="num">${r.count}</td><td class="num">${r.cust.size}</td>
+            <td class="num">${fmtVND(r.vnd)}</td><td class="num">${r.usd?fmtUSD(r.usd):"—"}</td>
+            <td class="num green"><b>${fmtVND(r.total)}</b></td><td class="num amber">${fmtVND(r.fee)}</td>
+            <td class="sr-col sr-act" style="white-space:nowrap"><button class="btn sm" onclick="viewReceiptMonth('${r.m}')">查看明细</button></td>
+          </tr>`).join("")}
+          <tr class="total-row"><td>合计</td><td class="num">${allCount}</td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num">${fmtVND(allTotal)}</td><td class="num">${fmtVND(allFee)}</td><td class="sr-col sr-act"></td></tr>
+          </tbody></table>`:`<div class="empty"><div class="e1">📅</div>还没有按日期登记的收款记录</div>`}
+      </div>
+    </div>`;
+  $("#rcMonth").onchange=e=>{if(e.target.value){state.receiptMonth=e.target.value;render();}};
+  const au=$("#rcAuto");
+  if(au)au.onchange=e=>{state.receiptIncludeAuto=e.target.checked;localStorage.setItem("ar_receipt_auto",e.target.checked?"1":"0");render();};
+}
+function viewReceiptMonth(m){
+  state.receiptMonth=m;render();
+  const box=$("#content");if(box)box.scrollTop=0;
+}
+/* 登记收款入口：先选客户（和具体发票），再填金额与日期 */
+function openReceiptPicker(){
+  const custs=[...new Set(state.invoices.filter(i=>invUnpaid(i)>0).map(i=>i.customer))]
+    .sort((a,b)=>String(a).localeCompare(String(b)));
+  openModal(`
+    <h4>登记收款</h4>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">先选客户（只列出还有未收余额的客户），下一步手动填写收款金额和收款日期。</div>
+    <label style="font-size:12px;color:var(--sub);display:block">客户</label>
+    <input id="rpCust" list="rpCustList" placeholder="输入或选择客户" autocomplete="off" style="width:100%;padding:9px;box-sizing:border-box">
+    <datalist id="rpCustList">${custs.map(n=>`<option value="${esc(n)}"></option>`).join("")}</datalist>
+    <label style="font-size:12px;color:var(--sub);display:block;margin-top:10px">登记到</label>
+    <select id="rpInv" style="width:100%;padding:9px;box-sizing:border-box"><option value="">请先选择客户</option></select>
+    <div class="actions"><button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn primary" onclick="confirmReceiptPicker()">下一步</button></div>`);
+  const inp=$("#rpCust");
+  inp.oninput=inp.onchange=()=>fillReceiptInvoices(inp.value.trim());
+  setTimeout(()=>inp.focus(),0);
+}
+function fillReceiptInvoices(name){
+  const sel=$("#rpInv");if(!sel)return;
+  const list=state.invoices.filter(i=>i.customer===name&&invUnpaid(i)>0).sort(invOrder);
+  if(!list.length){sel.innerHTML='<option value="">请先选择客户</option>';return;}
+  sel.innerHTML='<option value="">按客户登记（从最早的发票开始自动分配）</option>'+list.map(i=>{
+    const un=Math.max(0,i.total-(i.paidAmount||0)-(i.fee||0));
+    return `<option value="${esc(i.id)}">${monthLabel(i.month)} · ${esc(i.invoiceNo)||"无发票号"} · 未收 ${i.currency==="USD"?fmtUSD(un)+" USD":fmtVND(un)}</option>`;
+  }).join("");
+}
+function confirmReceiptPicker(){
+  const name=$("#rpCust").value.trim();
+  const id=$("#rpInv").value;
+  if(!name||!state.invoices.some(i=>i.customer===name&&invUnpaid(i)>0)){alert("请选择一个还有未收余额的客户");return;}
+  closeModal();
+  if(id)collectInvoice(id);else collectCustomer(name);
+}
+/* 修改某笔收款的日期（导入自动登记的款项补上真实日期后，就正式计入本页） */
+function editPaymentDate(id){
+  const p=state.payments.find(x=>x.id===id);if(!p)return;
+  openModal(`
+    <h4>修改收款日期</h4>
+    <div class="mline"><span>客户</span><b>${esc(p.customer)}</b></div>
+    <div class="mline"><span>收款金额</span><span>${payAmtText(p)}</span></div>
+    <label style="font-size:12px;color:var(--sub);display:block;margin-top:14px">收款日期</label>
+    <input id="epDate" type="date" value="${esc(p.date)}">
+    <label style="font-size:12px;color:var(--sub);display:block;margin-top:10px">备注（可选）</label>
+    <input id="epNote" type="text" value="${esc(p.note||"")}">
+    <div class="actions"><button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn primary" onclick="confirmEditPaymentDate('${p.id}')">保存</button></div>`);
+}
+async function confirmEditPaymentDate(id){
+  const p=state.payments.find(x=>x.id===id);if(!p)return;
+  const date=$("#epDate").value;
+  if(!date){alert("请选择收款日期");return;}
+  p.date=date;p.note=$("#epNote").value;p.source="manual";
+  await dbPut("payments",p);
+  for(const a of p.allocations||[]){
+    const i=state.invoices.find(x=>x.id===a.invoiceId);
+    if(i&&(i.paidAmount||0)+(i.fee||0)>=i.total-0.001){
+      const ds=state.payments.filter(x=>(x.allocations||[]).some(y=>y.invoiceId===i.id))
+        .map(x=>x.id===p.id?date:x.date).filter(Boolean).sort();
+      i.paidAt=ds[ds.length-1]||date;
+      await dbPut("invoices",i);
+    }
+  }
+  closeModal();await loadState();render();
+}
+function exportReceipts(){
+  const sel=state.receiptMonth||todayStr().slice(0,7);
+  const sumRows=receiptMonthRows().map(r=>({"收款月份":monthLabel(r.m),"笔数":r.count,"客户数":r.cust.size,
+    "VND收款":Math.round(r.vnd),"USD收款":r.usd||"","折合VND合计":Math.round(r.total),"手续费(VND)":Math.round(r.fee)}));
+  const detRows=receiptDetail(sel).map(p=>({"收款日期":p.date,"客户":p.customer,"客户代码":p.code||"",
+    "发票号":payInvoiceNos(p).join("、"),"币种":p.currency||"VND","收款金额":p.amount||0,
+    "折合VND":Math.round(payVND(p)),"手续费":p.fee||0,"备注":p.note||""}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sumRows),"每月收款汇总");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(detRows),(monthLabel(sel)+"明细").slice(0,31));
+  XLSX.writeFile(wb,"每月收款_"+todayStr()+".xlsx");
 }
 
 /* ============ 月度支出与利润 ============ */
@@ -1012,7 +1212,7 @@ async function saveManual(){
     if(r.settled){
       await dbPut("payments",{id:uid(),customer:inv.customer,code:inv.code,
         currency:inv.currency,amount:inv.total,date:todayStr(),fee:0,
-        note:"手工录入-现金",allocations:[{invoiceId:inv.id,amount:inv.total,fee:0}]});
+        source:"import",note:"手工录入-现金",allocations:[{invoiceId:inv.id,amount:inv.total,fee:0}]});
     }
   }
   // 更新批次计数
@@ -1339,7 +1539,7 @@ async function saveWizard(){
       if(settled){
         await dbPut("payments",{id:uid(),customer:o.customer,code:o.code,
           currency:o.currency,amount:o.total,date:todayStr(),fee:0,
-          note:o.cash?"Excel现金收入-无发票":"Excel黄色标记-已收款",
+          source:"import",note:o.cash?"Excel现金收入-无发票":"Excel黄色标记-已收款",
           allocations:[{invoiceId:invId,amount:o.total,fee:0}]});
       }
     }

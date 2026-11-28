@@ -94,6 +94,17 @@ th.sortable:hover{color:var(--blue)}
 .panel .ph h3{font-size:15px;font-weight:700}
 .panel .pb{padding:18px 20px}
 .tbl-scroll{overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch}
+/* 冻结右侧列：横向滚动发生在 .content 上，所以带 .sr 的表格容器不能自己成为滚动容器 */
+.content .tbl-scroll.sr{overflow:visible}
+.sr th.sr-col,.sr td.sr-col{position:sticky;z-index:2;background:#fff}
+.sr th.sr-col{background:#f7f9fc;z-index:3}
+.sr .sr-act{right:0;box-shadow:inset 1px 0 0 var(--line)}
+.sr .sr-mark{right:0;width:140px;min-width:140px;max-width:140px}
+.sr .sr-stat{right:140px;box-shadow:inset 1px 0 0 var(--line)}
+.sr tbody tr:hover td.sr-col{background:#f8faff}
+.sr tr.mark-red td.sr-col{background:#fef2f2}.sr tr.mark-yellow td.sr-col{background:#fffbe6}.sr tr.mark-blue td.sr-col{background:#eff6ff}.sr tr.mark-green td.sr-col{background:#ecfdf5}
+.sr tr.mark-red:hover td.sr-col{background:#fee2e2}.sr tr.mark-yellow:hover td.sr-col{background:#fff3c4}.sr tr.mark-blue:hover td.sr-col{background:#dbeafe}.sr tr.mark-green:hover td.sr-col{background:#d1fae5}
+.sr tr.total-row td.sr-col{background:#f7f9fc}
 
 /* ===== 客户下拉建议 ===== */
 .man-cust-wrap{position:relative;min-width:180px}
@@ -209,11 +220,12 @@ tr.open .caret{transform:rotate(90deg)}
     <nav class="nav">
       <button data-view="dashboard" class="active">📊 总览</button>
       <button data-view="customers">🏢 客户</button>
+      <button data-view="receipts">💵 收款</button>
       <button data-view="expenses">💰 支出/利润</button>
       <button data-view="import">📥 导入</button>
       <button data-view="data">⚙️ 管理</button>
     </nav>
-    <div class="foot">v5.2 · 云端实时同步 · 离线可用<span class="acc" id="sideAccount"></span></div>
+    <div class="foot">v5.4 · 云端实时同步 · 离线可用<span class="acc" id="sideAccount"></span></div>
   </aside>
   <div class="main">
     <div class="topbar">
